@@ -49,10 +49,7 @@ pub fn init_tracing(log_path: Option<std::path::PathBuf>) -> anyhow::Result<Opti
         if !path.exists() {
             std::fs::create_dir_all(path)?;
         }
-        tracing_appender::non_blocking(tracing_appender::rolling::daily(
-            path,
-            "eye.log",
-        ))
+        tracing_appender::non_blocking(tracing_appender::rolling::daily(path, "eye.log"))
     } else {
         tracing_appender::non_blocking(std::io::stdout())
     };

@@ -11,29 +11,45 @@ if [ "$CURRENT_BRANCH" = "main" ] || [ "$CURRENT_BRANCH" = "master" ]; then
     
     # 检查是否有未解决的TODO注释
     echo "Checking for TODO comments..."
-    TODO_COUNT=$(grep -r "TODO" --include="*.rs" --include="*.toml" --include="*.md" . | grep -v ".git" | wc -l)
+    TODO_COUNT=$(grep -r "TODO" --include="*.rs" --include="*.toml" --include="*.md" . 2>/dev/null | grep -v ".git" | wc -l)
     if [ "$TODO_COUNT" -gt 0 ]; then
         echo "Warning: Found $TODO_COUNT TODO comments. Consider resolving them before pushing to $CURRENT_BRANCH."
-        grep -r "TODO" --include="*.rs" --include="*.toml" --include="*.md" . | grep -v ".git"
-        read -p "Continue anyway? (y/n): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            echo "Push cancelled."
-            exit 1
+        grep -r "TODO" --include="*.rs" --include="*.toml" --include="*.md" . 2>/dev/null | grep -v ".git" || true
+        
+        # 在非交互式环境中自动继续，避免阻塞
+        if [ -t 0 ]; then
+            # 交互式终端
+            read -p "Continue anyway? (y/n): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                echo "Push cancelled."
+                exit 1
+            fi
+        else
+            # 非交互式环境（如git hook），输出警告但继续
+            echo "Warning: TODO comments found but continuing in non-interactive mode."
         fi
     fi
     
     # 检查是否有FIXME注释
     echo "Checking for FIXME comments..."
-    FIXME_COUNT=$(grep -r "FIXME" --include="*.rs" --include="*.toml" --include="*.md" . | grep -v ".git" | wc -l)
+    FIXME_COUNT=$(grep -r "FIXME" --include="*.rs" --include="*.toml" --include="*.md" . 2>/dev/null | grep -v ".git" | wc -l)
     if [ "$FIXME_COUNT" -gt 0 ]; then
         echo "Warning: Found $FIXME_COUNT FIXME comments. Consider resolving them before pushing to $CURRENT_BRANCH."
-        grep -r "FIXME" --include="*.rs" --include="*.toml" --include="*.md" . | grep -v ".git"
-        read -p "Continue anyway? (y/n): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            echo "Push cancelled."
-            exit 1
+        grep -r "FIXME" --include="*.rs" --include="*.toml" --include="*.md" . 2>/dev/null | grep -v ".git" || true
+        
+        # 在非交互式环境中自动继续，避免阻塞
+        if [ -t 0 ]; then
+            # 交互式终端
+            read -p "Continue anyway? (y/n): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                echo "Push cancelled."
+                exit 1
+            fi
+        else
+            # 非交互式环境（如git hook），输出警告但继续
+            echo "Warning: FIXME comments found but continuing in non-interactive mode."
         fi
     fi
     

@@ -1,0 +1,23 @@
+# 自动检测文本文件
+* text=auto
+
+# 确保shell脚本使用LF行结束符
+.githook/* text eol=lf
+
+# 源代码文件使用LF
+*.rs text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# 二进制文件
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tar binary
