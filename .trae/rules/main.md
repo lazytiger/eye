@@ -1,0 +1,3 @@
+1. 请记住这是一个在windows上开发的项目，所以任何脚本或者命令都需要能在windows下运行，不能使用linux下的命令。
+2. 优先使用powershell指令，避免使用cmd指令。
+3. android版本可以在本环境下尝试构建，但是iOS和osx版本都不能在windows上构建，避免尝试在windows上构建这两个版本。
