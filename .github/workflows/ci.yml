@@ -94,6 +94,37 @@ jobs:
     - name: Build release
       run: cargo build --target ${{ matrix.target }} --release --verbose
 
+  ios-build:
+    name: iOS Build
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: stable
+        targets: aarch64-apple-ios,x86_64-apple-ios
+    
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ios-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ios-cargo-
+    
+    - name: Build for iOS
+      run: |
+        # 构建iOS真机版本
+        cargo build --target aarch64-apple-ios --verbose
+        # 构建iOS模拟器版本
+        cargo build --target x86_64-apple-ios --verbose
+
   android-build:
     name: Android Build
     runs-on: ubuntu-latest
