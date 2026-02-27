@@ -1,0 +1,24 @@
+[package]
+version = "0.1.0"
+name = "eye"
+authors = ["hoping <baihaoping@gmail.com>"]
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "eye_bin"
+path = "src/main.rs"
+
+[dependencies]
+derive_more = { version = "2.1", features = ["display", "error"] }
+anyhow = "1.0"
+tracing = { version = "0.1", features = ["log"] }
+tracing-appender = "0.2"
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "chrono"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+android_logger = "0.15"
