@@ -110,7 +110,12 @@ jobs:
     - name: Install Android NDK
       run: |
         sudo apt-get update
-        sudo apt-get install -y android-sdk-platform-tools-common
+        sudo apt-get install -y android-sdk-platform-tools-common wget unzip
+        # 下载并安装Android NDK
+        wget https://dl.google.com/android/repository/android-ndk-r25c-linux.zip
+        unzip android-ndk-r25c-linux.zip
+        echo "ANDROID_NDK_HOME=$PWD/android-ndk-r25c" >> $GITHUB_ENV
+        echo "$PWD/android-ndk-r25c" >> $GITHUB_PATH
     
     - name: Cache dependencies
       uses: actions/cache@v4
@@ -124,7 +129,12 @@ jobs:
           android-cargo-
     
     - name: Build for Android
-      run: cargo build --target aarch64-linux-android --verbose
+      env:
+        CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
+      run: |
+        # 设置Android工具链
+        export PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+        cargo build --target aarch64-linux-android --verbose
 
   security-audit:
     name: Security Audit
