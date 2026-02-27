@@ -97,7 +97,6 @@ jobs:
   android-build:
     name: Android Build
     runs-on: ubuntu-latest
-    continue-on-error: true
     
     steps:
     - uses: actions/checkout@v4
@@ -115,6 +114,7 @@ jobs:
         # 下载并安装Android NDK
         wget https://dl.google.com/android/repository/android-ndk-r25c-linux.zip
         unzip android-ndk-r25c-linux.zip
+        echo "ANDROID_NDK_ROOT=$PWD/android-ndk-r25c" >> $GITHUB_ENV
         echo "ANDROID_NDK_HOME=$PWD/android-ndk-r25c" >> $GITHUB_ENV
         echo "$PWD/android-ndk-r25c" >> $GITHUB_PATH
     
@@ -132,9 +132,13 @@ jobs:
     - name: Build for Android
       env:
         CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
+        CC_aarch64_linux_android: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
+        CXX_aarch64_linux_android: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang++
       run: |
         # 设置Android工具链
         export PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+        # 验证工具链存在
+        ls -la "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/" | grep aarch64
         cargo build --target aarch64-linux-android --verbose
 
   security-audit:

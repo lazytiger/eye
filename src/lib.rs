@@ -18,7 +18,7 @@ impl<T> OptionToResult<T> for Option<T> {
 const LOG_LEVEL: tracing::metadata::LevelFilter = tracing::metadata::LevelFilter::INFO;
 
 #[cfg(target_os = "android")]
-pub fn init_tracing(_: Option<PathBuf>) -> anyhow::Result<Option<WorkerGuard>> {
+pub fn init_tracing(_: Option<std::path::PathBuf>) -> anyhow::Result<Option<WorkerGuard>> {
     fn tracing_level_filter(level: tracing::metadata::LevelFilter) -> tracing::log::LevelFilter {
         match level {
             tracing::metadata::LevelFilter::DEBUG => tracing::log::LevelFilter::Debug,
