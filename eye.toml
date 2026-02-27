@@ -1,0 +1,37 @@
+# Eye 个人智能助理配置文件
+
+[openrouter]
+# OpenRouter API Key (也可以通过环境变量 OPENROUTER_API_KEY 设置)
+api_key = ""
+# OpenRouter 端点
+endpoint = "https://openrouter.ai/api/v1"
+# 默认模型
+default_model = "openai/gpt-4o-mini"
+
+[model]
+# 温度参数 (0.0-2.0)
+temperature = 0.7
+# 最大 token 数
+max_tokens = 2048
+# 是否启用流式输出
+stream = true
+
+[tools]
+# 启用的工具列表
+enabled = ["shell"]
+
+[tools.shell]
+# 允许执行的命令列表
+allowed_commands = ["ls", "pwd", "echo", "dir", "cd", "type", "cat", "head", "tail", "find", "grep"]
+# 是否允许执行任意命令
+allow_any_command = false
+# 超时时间（秒）
+timeout_seconds = 30
+
+[interface]
+# 提示符
+prompt = "eye> "
+# 是否显示时间戳
+show_timestamp = false
+# 是否启用颜色
+enable_colors = true

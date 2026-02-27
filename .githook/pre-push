@@ -53,6 +53,14 @@ if [ "$CURRENT_BRANCH" = "main" ] || [ "$CURRENT_BRANCH" = "master" ]; then
         fi
     fi
     
+    # 检查代码是否可以编译
+    echo "Checking if code compiles..."
+    cargo check
+    if [ $? -ne 0 ]; then
+        echo "Code does not compile. Cannot push to $CURRENT_BRANCH."
+        exit 1
+    fi
+    
     # 运行完整的测试套件
     echo "Running full test suite..."
     cargo test --verbose

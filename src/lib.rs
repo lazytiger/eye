@@ -1,3 +1,14 @@
+//! Eye - Personal Intelligent Assistant
+//!
+//! A personal assistant that uses large language models with tool calling to interact with the real world.
+//!
+//! Key features:
+//! - Supports models with tool calling via OpenRouter
+//! - Command-line interface
+//! - All components abstracted as Traits for easy extension
+//! - Uses clap for command-line argument parsing
+
+use anyhow::Context;
 use derive_more::{Display, Error};
 use tracing_appender::non_blocking::WorkerGuard;
 
@@ -13,6 +24,25 @@ impl<T> OptionToResult<T> for Option<T> {
         self.ok_or_else(|| OptionIsNone.into())
     }
 }
+
+// Export primary modules
+pub mod agent;
+pub mod config;
+pub mod interface;
+pub mod model;
+pub mod skill;
+pub mod tool;
+
+// Export commonly used types
+pub use agent::Agent;
+pub use config::{cli, settings};
+pub use interface::{Interface, MessageRole as InterfaceMessageRole, Usage as InterfaceUsage};
+pub use model::{
+    ChatCompletionRequest, ChatCompletionResponse, ChatMessage, MessageRole, ModelProvider,
+    ToolCall, ToolDefinition as ModelToolDefinition,
+};
+pub use skill::{Skill, SkillManager};
+pub use tool::{Tool, ToolDefinition, ToolManager, ToolResult};
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
 const LOG_LEVEL: tracing::metadata::LevelFilter = tracing::metadata::LevelFilter::INFO;
@@ -71,4 +101,76 @@ pub fn init_tracing(log_path: Option<std::path::PathBuf>) -> anyhow::Result<Opti
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
     Ok(Some(guard))
+}
+
+/// Run the Eye application
+///
+/// This is the main entry point for the application logic
+pub async fn run() -> anyhow::Result<()> {
+    // Initialize logging
+    let _guard = init_tracing(None)?;
+    tracing::info!("Starting Eye Personal Intelligent Assistant");
+
+    // Parse command line arguments
+    let cli_args = cli::parse_args();
+
+    // Load configuration
+    let config = settings::Settings::load(cli_args.config_path.as_deref())
+        .context("Failed to load configuration")?;
+
+    // Update API Key in configuration (if provided via command line)
+    let mut config = config;
+    if let Some(api_key) = cli_args.api_key {
+        config.openrouter.api_key = api_key;
+    }
+
+    // Create model provider
+    let model_provider = model::create_model_provider(&config.openrouter)
+        .context("Failed to create model provider")?;
+
+    // Validate model configuration
+    model_provider
+        .validate_config()
+        .context("Model configuration validation failed")?;
+
+    // Create tool manager
+    let tool_manager = std::sync::Arc::new(ToolManager::new(&config.tools));
+
+    // Create skill manager
+    let skill_manager = std::sync::Arc::new(tokio::sync::Mutex::new(SkillManager::default()));
+
+    // Create interface
+    let interface = interface::create_interface(&config.interface);
+
+    // Create agent
+    let mut agent = Agent::new(
+        model_provider,
+        tool_manager,
+        skill_manager,
+        interface,
+        config,
+    );
+
+    // Execute corresponding operation based on command line arguments
+    match cli_args.command {
+        Some(cli::Commands::Chat { system_prompt }) => {
+            agent.chat_mode(system_prompt).await?;
+        }
+        Some(cli::Commands::Query { query }) => {
+            agent.query_mode(&query).await?;
+        }
+        Some(cli::Commands::ListTools) => {
+            agent.list_tools().await?;
+        }
+        Some(cli::Commands::ListSkills) => {
+            agent.list_skills().await?;
+        }
+        None => {
+            // Default to interactive chat mode
+            agent.chat_mode(None).await?;
+        }
+    }
+
+    tracing::info!("Eye Personal Intelligent Assistant has exited");
+    Ok(())
 }

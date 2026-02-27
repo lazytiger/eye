@@ -1,7 +1,10 @@
-use eye::init_tracing;
+//! Eye - Personal Intelligent Assistant Main Program
+//!
+//! Integrates all modules to provide a complete command-line interface
 
-fn main() -> anyhow::Result<()> {
-    let _guard = init_tracing(None)?;
-    tracing::info!("Hello, world!");
-    Ok(())
+use eye::run;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    run().await
 }
