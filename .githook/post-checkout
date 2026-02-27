@@ -1,0 +1,30 @@
+#!/bin/bash
+
+echo "Running post-checkout tasks..."
+
+# 获取切换前后的分支
+PREVIOUS_HEAD=$1
+NEW_HEAD=$2
+CHECKOUT_TYPE=$3
+
+echo "Previous HEAD: $PREVIOUS_HEAD"
+echo "New HEAD: $NEW_HEAD"
+echo "Checkout type: $CHECKOUT_TYPE"
+
+# 如果是分支切换（不是文件检出）
+if [ "$CHECKOUT_TYPE" = "1" ]; then
+    echo "Branch checkout detected."
+    
+    # 更新依赖（如果Cargo.lock有变化）
+    if git diff --name-only $PREVIOUS_HEAD $NEW_HEAD | grep -q "Cargo.lock"; then
+        echo "Cargo.lock has changed. Updating dependencies..."
+        cargo update
+    fi
+    
+    # 检查是否需要重新构建
+    if git diff --name-only $PREVIOUS_HEAD $NEW_HEAD | grep -q "Cargo.toml"; then
+        echo "Cargo.toml has changed. You may need to rebuild the project."
+    fi
+fi
+
+echo "Post-checkout tasks completed."

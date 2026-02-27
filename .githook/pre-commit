@@ -1,0 +1,29 @@
+#!/bin/bash
+
+echo "Running pre-commit checks..."
+
+# 检查代码格式
+echo "Checking code formatting..."
+cargo fmt --all -- --check
+if [ $? -ne 0 ]; then
+    echo "Code formatting check failed. Run 'cargo fmt --all' to fix."
+    exit 1
+fi
+
+# 运行clippy检查
+echo "Running clippy checks..."
+cargo clippy --all-targets --all-features -- -D warnings
+if [ $? -ne 0 ]; then
+    echo "Clippy checks failed. Please fix the warnings."
+    exit 1
+fi
+
+# 运行测试
+echo "Running tests..."
+cargo test --quiet
+if [ $? -ne 0 ]; then
+    echo "Tests failed. Please fix the failing tests."
+    exit 1
+fi
+
+echo "Pre-commit checks passed!"

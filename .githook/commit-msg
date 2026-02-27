@@ -1,0 +1,29 @@
+#!/bin/bash
+
+COMMIT_MSG_FILE=$1
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+echo "Checking commit message format..."
+
+# 检查提交消息是否为空
+if [ -z "$COMMIT_MSG" ]; then
+    echo "Error: Commit message is empty."
+    exit 1
+fi
+
+# 检查提交消息长度
+if [ ${#COMMIT_MSG} -gt 100 ]; then
+    echo "Error: Commit message is too long (max 100 characters)."
+    exit 1
+fi
+
+# 检查提交消息格式（Conventional Commits）
+if ! echo "$COMMIT_MSG" | grep -qE "^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z]+\))?: .+"; then
+    echo "Error: Commit message does not follow Conventional Commits format."
+    echo "Format: <type>(<scope>): <description>"
+    echo "Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert"
+    echo "Example: feat(auth): add login functionality"
+    exit 1
+fi
+
+echo "Commit message format is valid."
