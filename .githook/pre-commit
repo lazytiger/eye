@@ -2,11 +2,11 @@
 
 echo "Running pre-commit checks..."
 
-# 检查代码格式
-echo "Checking code formatting..."
-cargo fmt --all -- --check
+# 检查代码格式（使用nightly版本，因为项目使用了需要nightly的特性）
+echo "Checking code formatting with nightly Rust..."
+cargo +nightly fmt --all -- --check
 if [ $? -ne 0 ]; then
-    echo "Code formatting check failed. Run 'cargo fmt --all' to fix."
+    echo "Code formatting check failed. Run 'cargo +nightly fmt --all' to fix."
     exit 1
 fi
 

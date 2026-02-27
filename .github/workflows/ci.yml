@@ -38,7 +38,8 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cargo-${{ matrix.rust }}-
     
-    - name: Check formatting
+    - name: Check formatting (nightly only)
+      if: matrix.rust == 'nightly'
       run: cargo fmt --all -- --check
     
     - name: Clippy check
