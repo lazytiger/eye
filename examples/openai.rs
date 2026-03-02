@@ -22,7 +22,7 @@ use openai_api_rs::v1::chat_completion::{
 };
 use openai_api_rs::v1::common::GPT4_O;
 use openai_api_rs::v1::types::{Function, FunctionParameters, JSONSchemaDefine, JSONSchemaType};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::env;
 use tokio_stream::StreamExt;
@@ -247,18 +247,18 @@ async fn streaming_response() -> Result<(), Box<dyn std::error::Error>> {
 async fn tool_calling() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = create_client()?;
 
-    let tool1 = Tool {
-        r#type: ToolType::Function,
-        function: Function {
-            name: "datetime".into(),
-            description: Some("get current datetime".into()),
-            parameters: FunctionParameters {
-                schema_type: JSONSchemaType::Object,
-                properties: Some(HashMap::new()),
-                required: None,
-            },
-        },
-    };
+    let tool1 = json!({
+        "type": "function",
+        "function":{
+            "name": "datetime",
+            "description": "get current datetime",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+            }
+        }
+    });
+    let tool1: Tool = serde_json::from_value(tool1)?;
     let tool2 = Tool {
             r#type: ToolType::Function,
             function: Function {
@@ -278,6 +278,25 @@ async fn tool_calling() -> Result<(), Box<dyn std::error::Error>> {
                 },
             },
         };
+
+    let tool2 = json!({
+        "type": "function",
+        "function":{
+            "name": "mark_cacheable",
+            "description": "Indicate whether the current request/response is eligible for response caching. This tool is called for every request. If the request can be safely cached (no context dependence, no realtime data, deterministic answer), cacheable is true; otherwise false.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cacheable": {
+                        "type": "boolean",
+                        "description": "Whether the current request is eligible for response caching."
+                    }
+                },
+                "required": ["cacheable"]
+            }
+        }
+    });
+    let tool2: Tool = serde_json::from_value(tool2)?;
 
     let mut messages = vec![
         ChatCompletionMessage {
