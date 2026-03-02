@@ -32,7 +32,7 @@ pub struct OpenRouterConfig {
     #[serde(default = "default_openrouter_endpoint")]
     pub endpoint: String,
 
-    /// Default model
+    /// Default provider
     #[serde(default = "default_model")]
     pub default_model: String,
 }

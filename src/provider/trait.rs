@@ -99,7 +99,7 @@ pub trait ModelProvider: Send + Sync {
     /// Get provider name
     fn name(&self) -> &str;
 
-    /// Get supported model list
+    /// Get supported provider list
     fn supported_models(&self) -> Vec<String>;
 
     /// Validate configuration

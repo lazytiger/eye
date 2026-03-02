@@ -1,6 +1,6 @@
 //! Model module
 //!
-//! Manages LLM model providers, including:
+//! Manages LLM provider providers, including:
 //! - ModelProvider trait definition
 //! - OpenRouter implementation
 //! - Message and tool call type definitions
@@ -13,9 +13,9 @@ pub use self::{openrouter::OpenRouterProvider, r#trait::*};
 use crate::config::settings::OpenRouterConfig;
 use anyhow::Result;
 
-/// Create a model provider
+/// Create a provider provider
 ///
-/// Create a model provider instance based on configuration
+/// Create a provider provider instance based on configuration
 pub fn create_model_provider(config: &OpenRouterConfig) -> Result<Box<dyn ModelProvider>> {
     let provider = OpenRouterProvider::new(config.clone())?;
     Ok(Box::new(provider))

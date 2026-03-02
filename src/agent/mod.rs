@@ -8,7 +8,7 @@
 use crate::{
     config::settings,
     interface::{self, Interface, MessageRole as InterfaceMessageRole},
-    model::{self, ChatCompletionRequest, ChatMessage, MessageRole},
+    provider::{self, ChatCompletionRequest, ChatMessage, MessageRole},
     skill::SkillManager,
     tool::ToolManager,
 };
@@ -19,7 +19,7 @@ use tokio::sync::Mutex;
 /// Agent state
 pub struct Agent {
     /// Model provider
-    model_provider: Box<dyn model::ModelProvider>,
+    model_provider: Box<dyn provider::ModelProvider>,
     /// Tool manager
     tool_manager: Arc<ToolManager>,
     /// Skill manager
@@ -35,7 +35,7 @@ pub struct Agent {
 impl Agent {
     /// Create new agent
     pub fn new(
-        model_provider: Box<dyn model::ModelProvider>,
+        model_provider: Box<dyn provider::ModelProvider>,
         tool_manager: Arc<ToolManager>,
         skill_manager: Arc<Mutex<SkillManager>>,
         interface: Box<dyn Interface>,
@@ -62,7 +62,7 @@ impl Agent {
     }
 
     /// Handle tool calls
-    async fn handle_tool_calls(&self, tool_calls: &[model::ToolCall]) -> Result<Vec<ChatMessage>> {
+    async fn handle_tool_calls(&self, tool_calls: &[provider::ToolCall]) -> Result<Vec<ChatMessage>> {
         let mut tool_messages = Vec::new();
 
         for tool_call in tool_calls {
@@ -163,10 +163,10 @@ impl Agent {
             // Get tool definitions
             let tool_definitions = self.tool_manager.get_tool_definitions();
 
-            // Convert tool definitions to model format
-            let model_tool_definitions: Vec<model::ToolDefinition> = tool_definitions
+            // Convert tool definitions to provider format
+            let model_tool_definitions: Vec<provider::ToolDefinition> = tool_definitions
                 .into_iter()
-                .map(|td| model::ToolDefinition {
+                .map(|td| provider::ToolDefinition {
                     name: td.name,
                     description: td.description,
                     parameters: td.parameters,
@@ -206,9 +206,9 @@ impl Agent {
                 if !tool_calls.is_empty() {
                     // Resend request (including tool results)
                     let tool_definitions = self.tool_manager.get_tool_definitions();
-                    let model_tool_definitions: Vec<model::ToolDefinition> = tool_definitions
+                    let model_tool_definitions: Vec<provider::ToolDefinition> = tool_definitions
                         .into_iter()
-                        .map(|td| model::ToolDefinition {
+                        .map(|td| provider::ToolDefinition {
                             name: td.name,
                             description: td.description,
                             parameters: td.parameters,
@@ -270,10 +270,10 @@ impl Agent {
         // Get tool definitions
         let tool_definitions = self.tool_manager.get_tool_definitions();
 
-        // Convert tool definitions to model format
-        let model_tool_definitions: Vec<model::ToolDefinition> = tool_definitions
+        // Convert tool definitions to provider format
+        let model_tool_definitions: Vec<provider::ToolDefinition> = tool_definitions
             .into_iter()
-            .map(|td| model::ToolDefinition {
+            .map(|td| provider::ToolDefinition {
                 name: td.name,
                 description: td.description,
                 parameters: td.parameters,
@@ -310,9 +310,9 @@ impl Agent {
             if !tool_calls.is_empty() {
                 // Resend request (including tool results)
                 let tool_definitions = self.tool_manager.get_tool_definitions();
-                let model_tool_definitions: Vec<model::ToolDefinition> = tool_definitions
+                let model_tool_definitions: Vec<provider::ToolDefinition> = tool_definitions
                     .into_iter()
-                    .map(|td| model::ToolDefinition {
+                    .map(|td| provider::ToolDefinition {
                         name: td.name,
                         description: td.description,
                         parameters: td.parameters,

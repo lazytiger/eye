@@ -6,7 +6,7 @@ use anyhow::Result;
 use eye::{
     config::settings,
     interface::MessageRole as InterfaceMessageRole,
-    model::{ChatMessage, MessageRole},
+    provider::{ChatMessage, MessageRole},
     skill::SkillManager,
     tool::{Tool, ToolManager, ToolResult},
 };

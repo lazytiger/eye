@@ -1,4 +1,4 @@
-//! OpenRouter model provider implementation
+//! OpenRouter provider provider implementation
 //!
 //! Implements OpenRouter client using openai-api-rs crate
 
@@ -6,7 +6,7 @@ use super::r#trait::*;
 use crate::config::settings::OpenRouterConfig;
 use anyhow::Result;
 
-/// OpenRouter model provider
+/// OpenRouter provider provider
 pub struct OpenRouterProvider {
     /// Configuration
     config: OpenRouterConfig,

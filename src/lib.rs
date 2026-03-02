@@ -29,15 +29,17 @@ impl<T> OptionToResult<T> for Option<T> {
 pub mod agent;
 pub mod config;
 pub mod interface;
-pub mod model;
+pub mod provider;
 pub mod skill;
 pub mod tool;
+
+pub mod memory;
 
 // Export commonly used types
 pub use agent::Agent;
 pub use config::{cli, settings};
 pub use interface::{Interface, MessageRole as InterfaceMessageRole, Usage as InterfaceUsage};
-pub use model::{
+pub use provider::{
     ChatCompletionRequest, ChatCompletionResponse, ChatMessage, MessageRole, ModelProvider,
     ToolCall, ToolDefinition as ModelToolDefinition,
 };
@@ -124,11 +126,11 @@ pub async fn run() -> anyhow::Result<()> {
         config.openrouter.api_key = api_key;
     }
 
-    // Create model provider
-    let model_provider = model::create_model_provider(&config.openrouter)
-        .context("Failed to create model provider")?;
+    // Create provider provider
+    let model_provider = provider::create_model_provider(&config.openrouter)
+        .context("Failed to create provider provider")?;
 
-    // Validate model configuration
+    // Validate provider configuration
     model_provider
         .validate_config()
         .context("Model configuration validation failed")?;
