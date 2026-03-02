@@ -1,17 +1,17 @@
-//! 命令行参数定义
+//! Command-line argument definitions
 //!
-//! 使用 clap 定义所有命令行参数
+//! Define all CLI arguments using clap
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-/// Eye - 个人智能助理
+/// Eye - Personal AI Assistant
 #[derive(Parser, Debug)]
 #[command(name = "eye")]
 #[command(version = "0.1.0")]
-#[command(about = "个人智能助理 - 通过工具调用与现实世界交互", long_about = None)]
+#[command(about = "Personal AI Assistant - interacts with the real world via tools", long_about = None)]
 pub struct Cli {
-    /// 配置文件路径
+    /// Configuration file path
     #[arg(short, long, value_name = "FILE")]
     pub config_path: Option<PathBuf>,
 
@@ -19,36 +19,36 @@ pub struct Cli {
     #[arg(short, long, env = "OPENROUTER_API_KEY")]
     pub api_key: Option<String>,
 
-    /// 模型名称
+    /// Model name
     #[arg(short, long, default_value = "openai/gpt-4o-mini")]
     pub model: String,
 
-    /// 交互模式
+    /// Interaction mode
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
 
-/// 子命令
+/// Subcommands
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// 启动交互式会话
+    /// Start an interactive session
     Chat {
-        /// 系统提示词
+        /// System prompt
         #[arg(short, long)]
         system_prompt: Option<String>,
     },
-    /// 执行单次查询
+    /// Execute a single query
     Query {
-        /// 查询内容
+        /// Query text
         query: String,
     },
-    /// 列出可用工具
+    /// List available tools
     ListTools,
-    /// 列出可用技能
+    /// List available skills
     ListSkills,
 }
 
-/// 解析命令行参数
+/// Parse command-line arguments
 pub fn parse_args() -> Cli {
     Cli::parse()
 }

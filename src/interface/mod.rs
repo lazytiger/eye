@@ -1,14 +1,16 @@
 //! Interface module
 //!
 //! Manages user interfaces, including:
+//! - Base interface trait definition
 //! - Interface trait definition
-//! - Console interface implementation
+//! - CLI interface implementation
 //! - Interface manager
 
-pub mod console;
+pub mod base;
+pub mod cli;
 pub mod r#trait;
 
-pub use self::{console::ConsoleInterface, r#trait::*};
+pub use self::{base::*, cli::CliInterface, r#trait::*};
 
 use crate::config::settings::InterfaceConfig;
 
@@ -16,6 +18,6 @@ use crate::config::settings::InterfaceConfig;
 ///
 /// Create corresponding interface instance based on configuration
 pub fn create_interface(config: &InterfaceConfig) -> Box<dyn Interface> {
-    let interface = ConsoleInterface::new(config.clone());
+    let interface = CliInterface::new(config.clone());
     Box::new(interface)
 }

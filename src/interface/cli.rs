@@ -1,32 +1,49 @@
 //! Command-line interface implementation
 //!
-//! Console implementation of the Interface trait
+//! CLI implementation of the Interface trait using console I/O
 
-use super::r#trait::*;
+use super::{base::BaseInterface, r#trait::*};
 use crate::config::settings::InterfaceConfig;
 use anyhow::Result;
-use std::io::{self, Write};
+use console::{style, Term};
+use tokio::sync::mpsc::Sender;
 
-/// Console interface
-pub struct ConsoleInterface {
+/// CLI interface
+pub struct CliInterface {
     /// Configuration
     config: InterfaceConfig,
+    /// Console terminal
+    term: Term,
 }
 
-impl ConsoleInterface {
-    /// Create a new console interface
+impl CliInterface {
+    /// Create a new CLI interface
     pub fn new(config: InterfaceConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            term: Term::buffered_stdout(),
+        }
     }
 
     /// Print colored text
     fn print_colored(&self, text: &str, color_code: &str) {
         if self.config.enable_colors {
-            print!("\x1b[{}m{}\x1b[0m", color_code, text);
+            // Map ANSI color codes to console styles
+            let styled_text = match color_code {
+                "34" => style(text).blue(),      // Blue
+                "32" => style(text).green(),     // Green
+                "33" => style(text).yellow(),    // Yellow
+                "35" => style(text).magenta(),   // Purple/Magenta
+                "36" => style(text).cyan(),      // Cyan
+                "31" => style(text).red(),       // Red
+                "1" => style(text).bold(),       // Bold
+                _ => style(text),
+            };
+            print!("{}", styled_text);
         } else {
             print!("{}", text);
         }
-        io::stdout().flush().unwrap();
+        self.term.flush().unwrap();
     }
 
     /// Print timestamp
@@ -42,31 +59,54 @@ impl ConsoleInterface {
             let secs = seconds % 60;
 
             print!("[{:02}:{:02}:{:02}] ", hours, minutes, secs);
+            self.term.flush().unwrap();
         }
     }
 }
 
 #[async_trait::async_trait]
-impl Interface for ConsoleInterface {
+impl BaseInterface for CliInterface {
+    async fn send(&self, message: String) -> Result<()> {
+        // Display as assistant message by default
+        self.display_message(&message, MessageRole::Assistant).await
+    }
+    
+    async fn listen(&self, response_tx: Sender<String>) -> Result<()> {
+        // Start listening loop
+        loop {
+            let input = self.get_user_input().await?;
+            
+            // Send input to agent for processing
+            if response_tx.send(input).await.is_err() {
+                break; // Channel closed, stop listening
+            }
+        }
+        
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl Interface for CliInterface {
     async fn display_message(&self, message: &str, role: MessageRole) -> Result<()> {
         self.print_timestamp();
 
         match role {
             MessageRole::User => {
                 self.print_colored("User: ", "34"); // Blue
-                println!("{}", message);
+                self.term.write_line(message)?;
             }
             MessageRole::Assistant => {
                 self.print_colored("Assistant: ", "32"); // Green
-                println!("{}", message);
+                self.term.write_line(message)?;
             }
             MessageRole::System => {
                 self.print_colored("System: ", "33"); // Yellow
-                println!("{}", message);
+                self.term.write_line(message)?;
             }
             MessageRole::Tool => {
                 self.print_colored("Tool: ", "35"); // Purple
-                println!("{}", message);
+                self.term.write_line(message)?;
             }
         }
 
@@ -80,10 +120,10 @@ impl Interface for ConsoleInterface {
     ) -> Result<()> {
         self.print_timestamp();
         self.print_colored("Tool call: ", "36"); // Cyan
-        println!("{}", tool_name);
+        self.term.write_line(tool_name)?;
 
         if let Ok(args_str) = serde_json::to_string_pretty(arguments) {
-            println!("Args: {}", args_str);
+            self.term.write_line(&format!("Args: {}", args_str))?;
         }
 
         Ok(())
@@ -103,10 +143,10 @@ impl Interface for ConsoleInterface {
             self.print_colored("Tool error: ", "31"); // Red
         }
 
-        println!("{}", tool_name);
+        self.term.write_line(tool_name)?;
 
         if let Ok(result_str) = serde_json::to_string_pretty(result) {
-            println!("Result: {}", result_str);
+            self.term.write_line(&format!("Result: {}", result_str))?;
         }
 
         Ok(())
@@ -116,30 +156,23 @@ impl Interface for ConsoleInterface {
         self.print_timestamp();
         self.print_colored(&self.config.prompt, "1"); // Bold
 
-        io::stdout().flush()?;
-
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-
+        self.term.flush()?;
+        
+        // Use console's read_line with initial text for better UX
+        let input = self.term.read_line_initial_text("")?;
+        
         Ok(input.trim().to_string())
     }
 
     async fn clear_screen(&self) -> Result<()> {
-        if cfg!(windows) {
-            std::process::Command::new("cmd")
-                .args(["/c", "cls"])
-                .status()?;
-        } else {
-            std::process::Command::new("clear").status()?;
-        }
-
+        self.term.clear_screen()?;
         Ok(())
     }
 
     async fn display_error(&self, error: &str) -> Result<()> {
         self.print_timestamp();
         self.print_colored("Error: ", "31"); // Red
-        println!("{}", error);
+        self.term.write_line(error)?;
 
         Ok(())
     }
@@ -147,7 +180,7 @@ impl Interface for ConsoleInterface {
     async fn display_info(&self, info: &str) -> Result<()> {
         self.print_timestamp();
         self.print_colored("Info: ", "36"); // Cyan
-        println!("{}", info);
+        self.term.write_line(info)?;
 
         Ok(())
     }
@@ -155,10 +188,10 @@ impl Interface for ConsoleInterface {
     async fn display_usage(&self, usage: &Usage) -> Result<()> {
         self.print_timestamp();
         self.print_colored("Token usage: ", "33"); // Yellow
-        println!(
+        self.term.write_line(&format!(
             "Prompt: {}, Completion: {}, Total: {}",
             usage.prompt_tokens, usage.completion_tokens, usage.total_tokens
-        );
+        ))?;
 
         Ok(())
     }

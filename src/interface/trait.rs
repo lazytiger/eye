@@ -2,6 +2,7 @@
 //!
 //! Defines the Interface trait to abstract different user interfaces
 
+use super::base::BaseInterface;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
@@ -32,7 +33,7 @@ pub struct Usage {
 
 /// Interface trait
 #[async_trait]
-pub trait Interface: Send + Sync {
+pub trait Interface: BaseInterface + Send + Sync {
     /// Display a message
     async fn display_message(&self, message: &str, role: MessageRole) -> Result<()>;
 

@@ -6,7 +6,7 @@ A personal intelligent assistant that enables large language models to interact 
 
 - **Model Provider Abstraction**: Support for OpenRouter (with OpenAI API compatibility)
 - **Tool System**: Extensible tool calling system with Shell command execution
-- **Interface Abstraction**: Console interface with support for future GUI/Web interfaces
+- **Interface Abstraction**: CLI interface with support for future GUI/Web interfaces
 - **Configuration Management**: TOML-based configuration with CLI overrides
 - **Skill System**: Extensible skill framework for specialized capabilities
 - **Cross-platform**: Windows compatibility with PowerShell support
@@ -33,7 +33,7 @@ src/
 │   └── mod.rs           # Tool manager
 ├── interface/           # User interface abstraction
 │   ├── trait.rs         # Interface trait definition
-│   └── console.rs       # Console interface implementation
+│   └── cli.rs           # CLI interface implementation
 └── skill/              # Skill system
     ├── trait.rs         # Skill trait definition
     └── mod.rs           # Skill manager
@@ -106,7 +106,7 @@ eye chat
 - Configuration system (TOML + clap)
 - Model provider abstraction (trait)
 - Tool system abstraction (trait + Shell implementation)
-- Interface abstraction (trait + Console implementation)
+- Interface abstraction (trait + CLI implementation)
 - Skill system abstraction (trait)
 - Agent abstraction layer
 - Main application integration
