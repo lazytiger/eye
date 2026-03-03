@@ -231,6 +231,13 @@ impl Request {
         });
         self
     }
+
+    pub fn tool_choice_function(&mut self, name: impl Into<String>) -> &mut Self {
+        self.tool_choice = Some(Content(ToolChoice::Function {
+            function: FunctionChoice { name: name.into() },
+        }));
+        self
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -294,7 +301,7 @@ impl TextContent for ToolChoice {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FunctionChoice {
-    name: String,
+    pub name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -413,7 +420,7 @@ pub struct Function {
     pub name: String,
     /// Function arguments as JSON string
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub arguments: Option<serde_json::Value>,
+    pub arguments: Option<String>,
 }
 
 /// System message content

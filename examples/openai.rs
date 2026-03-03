@@ -121,7 +121,7 @@ async fn multi_turn_conversation() -> Result<(), Box<dyn std::error::Error>> {
 
 #[derive(Debug, Deserialize)]
 pub struct MarkCacheableParam {
-    cacheable: bool,
+    pub cacheable: bool,
 }
 
 /// Example 4: Tool/function calling
@@ -169,8 +169,10 @@ async fn tool_calling() -> Result<(), Box<dyn std::error::Error>> {
         // For this example, we make a regular request and show how tool calls would be handled
         if i == 0 {
             request.tools = Some(vec![tool1.clone(), tool2.clone()]);
+            request.tool_choice_function("mark_cacheable");
         } else {
             request.tools = Some(vec![tool1.clone()]);
+            request.tool_choice = None;
         }
         request.max_completion_tokens = Some(4096);
 
@@ -208,7 +210,7 @@ async fn tool_calling() -> Result<(), Box<dyn std::error::Error>> {
                 match tool_call.function.name.as_str() {
                     "mark_cacheable" => {
                         let args = tool_call.function.arguments.clone().to_ok()?;
-                        let args: MarkCacheableParam = serde_json::from_value(args)?;
+                        let args: MarkCacheableParam = serde_json::from_str(&args)?;
                         println!("  Mark cacheable:{}", args.cacheable);
                     }
                     "datetime" => {
