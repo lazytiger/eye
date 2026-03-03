@@ -1,6 +1,7 @@
+use derive_more::with_trait::Deref;
 use serde::{
-    Deserialize, Serialize,
-    de::{Visitor, value::MapAccessDeserializer},
+    de::{value::MapAccessDeserializer, Visitor}, Deserialize,
+    Serialize,
 };
 use std::marker::PhantomData;
 
@@ -57,12 +58,12 @@ impl TextContent for ChatMessageContent {
     }
 }
 
-#[derive(Debug)]
-pub struct Content<T>(pub T);
+#[derive(Debug, Clone, Deref)]
+pub struct Content<T: Clone>(pub T);
 
 impl<T> Serialize for Content<T>
 where
-    T: TextContent + Serialize,
+    T: TextContent + Serialize + Clone,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -80,7 +81,7 @@ pub struct ContentVisitor<T>(PhantomData<T>);
 
 impl<'a, T> Visitor<'a> for ContentVisitor<T>
 where
-    T: TextContent + Deserialize<'a>,
+    T: TextContent + Deserialize<'a> + Clone,
 {
     type Value = Content<T>;
 
@@ -106,7 +107,7 @@ where
 
 impl<'a, T> Deserialize<'a> for Content<T>
 where
-    T: TextContent + Deserialize<'a>,
+    T: TextContent + Deserialize<'a> + Clone,
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -116,7 +117,7 @@ where
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Request {
     /// List of messages for the conversation
     pub messages: Vec<Message>,
@@ -126,7 +127,7 @@ pub struct Request {
     /// A unique identifier for grouping related requests (e.g., a conversation or agent workflow) for observability.
     /// If provided in both the request body and the x-session-id header, the body value takes precedence. Maximum of 128 characters.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sesion_id: Option<String>,
+    pub session_id: Option<String>,
     /// Model to use for completion
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
@@ -136,7 +137,9 @@ pub struct Request {
     ///Maximum tokens in completion
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_completion_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub presence_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub response_format: Option<ResponseFormat>,
     /// Random seed for reproducible results
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -164,10 +167,73 @@ pub struct Request {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_p: Option<f32>,
     /// Output modalities for the response. Supported values are "text", "image", and "audio".
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub modalities: Option<Vec<Modalities>>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+impl Request {
+    pub fn new(model: impl Into<String>) -> Self {
+        Request {
+            model: Some(model.into()),
+            ..Default::default()
+        }
+    }
+
+    pub fn add_user_message(&mut self, text: impl Into<String>) -> &mut Self {
+        self.messages.push(Message::User {
+            name: None,
+            content: Content(ChatMessageContent::Text {
+                text: text.into(),
+                cache_control: None,
+            }),
+        });
+        self
+    }
+
+    pub fn add_system_message(&mut self, text: impl Into<String>) -> &mut Self {
+        self.messages.push(Message::System {
+            name: None,
+            content: Content(SystemMessageContent::Text {
+                text: text.into(),
+                cache_control: None,
+            }),
+        });
+        self
+    }
+
+    pub fn add_assistant_message(&mut self, text: impl Into<String>) -> &mut Self {
+        self.messages.push(Message::Assistant {
+            name: None,
+            content: Content(ChatMessageContent::Text {
+                text: text.into(),
+                cache_control: None,
+            }),
+            tool_calls: None,
+            refusal: None,
+            reasoning: None,
+            images: None,
+            audio: None,
+        });
+        self
+    }
+
+    pub fn add_tool_message(
+        &mut self,
+        id: impl Into<String>,
+        content: impl Into<String>,
+    ) -> &mut Self {
+        self.messages.push(Message::Tool {
+            tool_call_id: id.into(),
+            content: Content(ChatMessageContent::Text {
+                text: content.into(),
+                cache_control: None,
+            }),
+        });
+        self
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum Modalities {
     Text,
@@ -175,24 +241,28 @@ pub enum Modalities {
     Image,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ToolFunction {
     name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     parameters: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     strict: Option<bool>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Tool {
     Function {
         function: ToolFunction,
+        #[serde(skip_serializing_if = "Option::is_none")]
         cache_control: Option<CacheControl>,
     },
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToolChoice {
     None,
@@ -201,12 +271,12 @@ pub enum ToolChoice {
     Function { function: FunctionChoice },
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FunctionChoice {
     name: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResponseFormat {
     Text,
@@ -216,15 +286,18 @@ pub enum ResponseFormat {
     Python,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct JsonSchemaFormat {
     name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     schema: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     strict: Option<bool>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "role", rename_all = "snake_case")]
 pub enum Message {
     System {
@@ -257,7 +330,7 @@ pub enum Message {
         // TODO reasoning_details
         /// Generated images from image generation models
         #[serde(skip_serializing_if = "Option::is_none")]
-        images: Option<Vec<ImageUrl>>,
+        images: Option<Vec<OutputImage>>,
         /// Audio output data or reference
         #[serde(skip_serializing_if = "Option::is_none")]
         audio: Option<OutputAudio>,
@@ -271,48 +344,59 @@ pub enum Message {
 }
 
 /// Audio output data or reference
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OutputAudio {
     /// Audio output identifier
+    #[serde(skip_serializing_if = "Option::is_none")]
     id: Option<String>,
     /// Audio expiration timestamp
+    #[serde(skip_serializing_if = "Option::is_none")]
     expires_at: Option<f64>,
     /// Base64 encoded audio data
+    #[serde(skip_serializing_if = "Option::is_none")]
     data: Option<String>,
     /// Audio transcript
+    #[serde(skip_serializing_if = "Option::is_none")]
     transcript: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ImageUrl {
     /// URL or base64-encoded data of the generated image
-    image_url: String,
+    url: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct OutputImage {
+    image_url: ImageUrl,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ToolCall {
     /// Tool call identifier
-    id: String,
-    tool_type: ToolType,
-    function: Function,
+    pub id: String,
+    #[serde(rename = "type")]
+    pub tool_type: ToolType,
+    pub function: Function,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolType {
     Function,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Function {
     /// Function name to call
-    name: String,
+    pub name: String,
     /// Function arguments as JSON string
-    arguments: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<serde_json::Value>,
 }
 
 /// System message content
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SystemMessageContent {
     Text {
@@ -322,7 +406,7 @@ pub enum SystemMessageContent {
     },
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ChatMessageContent {
     Text {
@@ -344,25 +428,31 @@ pub enum ChatMessageContent {
     InputVideo {
         video_url: VideoUrl,
     },
+    VideoUrl {
+        video_url: VideoUrl,
+    },
     File {
         ///File content as base64 data URL or URL
+        #[serde(skip_serializing_if = "Option::is_none")]
         file_data: Option<String>,
         /// File ID for previously uploaded files
+        #[serde(skip_serializing_if = "Option::is_none")]
         file_id: Option<String>,
         /// Original filename
+        #[serde(skip_serializing_if = "Option::is_none")]
         file_name: Option<String>,
     },
 }
 
 /// Video input object
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
 pub struct VideoUrl {
     /// URL of the video (data: URLs supported)
     url: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum ImageDetail {
     Auto,
@@ -371,7 +461,7 @@ pub enum ImageDetail {
 }
 
 /// Cache control for the content part
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CacheControl {
     Ephemeral {
@@ -380,7 +470,7 @@ pub enum CacheControl {
     },
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum TTL {
     #[serde(rename = "5m")]
     FiveMinute,
@@ -389,16 +479,106 @@ pub enum TTL {
 }
 
 /// Successful chat completion response
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Response {
     /// Unique completion identifier
     pub id: String,
-
+    /// List of completion choices
     pub choices: Vec<Choice>,
+    /// Unix timestamp of creation
+    pub created: u64,
+    /// Model used for completion
+    pub model: String,
+    pub object: String,
+    /// System fingerprint
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_fingerprint: Option<String>,
+    /// Token usage statistics
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<Usage>,
 }
 
+/// Token usage statistics
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Usage {
+    /// Number of tokens in the completion
+    pub completion_tokens: u32,
+    /// Number of tokens in the prompt
+    pub prompt_tokens: u32,
+    /// Total number of tokens
+    pub total_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completion_tokens_details: Option<CompletionTokensDetail>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_details: Option<PromptTokensDetail>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CompletionTokensDetail {
+    /// Tokens used for reasoning
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_tokens: Option<u32>,
+    /// Tokens used for audio output
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audio_tokens: Option<u32>,
+    /// Accepted prediction tokens
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accepted_prediction_tokens: Option<u32>,
+    /// Rejected prediction tokens
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rejected_prediction_tokens: Option<u32>,
+}
+
+/// Detailed prompt token usage
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PromptTokensDetail {
+    /// Cached prompt tokens
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cached_tokens: Option<u32>,
+    /// Tokens written to cache. Only returned for models with explicit caching and cache write pricing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_write_tokens: Option<u32>,
+    /// Audio input tokens
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audio_tokens: Option<u32>,
+    /// Video input tokens
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub video_tokens: Option<u32>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Choice {
     pub finish_reason: String,
+    /// Choice index
     pub index: usize,
+    /// Assistant message for requests and responses
+    pub message: ResponseMessage,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ResponseMessage {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    /// Assistant message content
+    pub content: Content<ChatMessageContent>,
+    /// Optional name for the assistant
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Tool calls made by the assistant
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
+    /// Refusal message if content was refused
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<String>,
+    /// Reasoning output
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,
+    /// Generated images from image generation models
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub images: Option<Vec<OutputImage>>,
+    /// Audio output data or reference
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audio: Option<OutputAudio>,
 }
 
 #[cfg(test)]
