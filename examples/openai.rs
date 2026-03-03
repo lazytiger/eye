@@ -13,7 +13,7 @@
 
 use chrono::Local;
 use eye::provider::openai::OpenaiCompatibleProvider;
-use eye::provider::{Content, Message, Provider, Request, Tool};
+use eye::provider::{Content, Provider, Request, Tool};
 use eye::OptionToResult;
 use serde::Deserialize;
 use serde_json::json;
@@ -181,18 +181,7 @@ async fn tool_calling() -> Result<(), Box<dyn std::error::Error>> {
         let choice = &result.choices[0];
         println!("Finish reason: {:?}", choice.finish_reason);
 
-        request.messages.push(Message::Assistant {
-            content: choice.message.content.clone(),
-            name: choice.message.name.clone(),
-            tool_calls: choice.message.tool_calls.clone().map(|mut s| {
-                s.retain(|t| t.function.name != "mark_cacheable");
-                s
-            }),
-            refusal: choice.message.refusal.clone(),
-            reasoning: choice.message.reasoning.clone(),
-            images: choice.message.images.clone(),
-            audio: choice.message.audio.clone(),
-        });
+        request.messages.push(choice.message.clone().into());
 
         // Check if the provider wants to call a tool
         if let Some(tool_calls) = &choice.message.tool_calls {
@@ -212,6 +201,7 @@ async fn tool_calling() -> Result<(), Box<dyn std::error::Error>> {
                         let args = tool_call.function.arguments.clone().to_ok()?;
                         let args: MarkCacheableParam = serde_json::from_str(&args)?;
                         println!("  Mark cacheable:{}", args.cacheable);
+                        request.add_tool_message(&tool_call.id, "");
                     }
                     "datetime" => {
                         request.add_tool_message(&tool_call.id, Local::now().to_string());

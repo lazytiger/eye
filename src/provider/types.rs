@@ -371,6 +371,20 @@ pub enum Message {
     },
 }
 
+impl From<ResponseMessage> for Message {
+    fn from(response: ResponseMessage) -> Self {
+        Message::Assistant {
+            name: response.name,
+            content: response.content,
+            tool_calls: response.tool_calls,
+            refusal: response.refusal,
+            reasoning: response.reasoning,
+            images: response.images,
+            audio: response.audio,
+        }
+    }
+}
+
 /// Audio output data or reference
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OutputAudio {
