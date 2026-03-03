@@ -8,10 +8,7 @@
 //! - All components abstracted as Traits for easy extension
 //! - Uses clap for command-line argument parsing
 
-use crate::agent::Agent;
 use crate::config::{cli, settings};
-use crate::skill::SkillManager;
-use crate::tool::ToolManager;
 use anyhow::Context;
 use derive_more::{Display, Error};
 use tracing_appender::non_blocking::WorkerGuard;
@@ -117,53 +114,6 @@ pub async fn run() -> anyhow::Result<()> {
     let mut config = config;
     if let Some(api_key) = cli_args.api_key {
         config.openrouter.api_key = api_key;
-    }
-
-    // Create provider provider
-    let model_provider = provider::create_model_provider(&config.openrouter)
-        .context("Failed to create provider provider")?;
-
-    // Validate provider configuration
-    model_provider
-        .validate_config()
-        .context("Model configuration validation failed")?;
-
-    // Create tool manager
-    let tool_manager = std::sync::Arc::new(ToolManager::new(&config.tools));
-
-    // Create skill manager
-    let skill_manager = std::sync::Arc::new(tokio::sync::Mutex::new(SkillManager::default()));
-
-    // Create interface
-    let interface = interface::create_interface(&config.interface);
-
-    // Create agent
-    let mut agent = Agent::new(
-        model_provider,
-        tool_manager,
-        skill_manager,
-        interface,
-        config,
-    );
-
-    // Execute corresponding operation based on command line arguments
-    match cli_args.command {
-        Some(cli::Commands::Chat { system_prompt }) => {
-            agent.chat_mode(system_prompt).await?;
-        }
-        Some(cli::Commands::Query { query }) => {
-            agent.query_mode(&query).await?;
-        }
-        Some(cli::Commands::ListTools) => {
-            agent.list_tools().await?;
-        }
-        Some(cli::Commands::ListSkills) => {
-            agent.list_skills().await?;
-        }
-        None => {
-            // Default to interactive chat mode
-            agent.chat_mode(None).await?;
-        }
     }
 
     tracing::info!("Eye Personal Intelligent Assistant has exited");

@@ -20,6 +20,10 @@ pub struct Settings {
 
     /// Interface configuration
     pub interface: InterfaceConfig,
+    
+    /// Agent configuration
+    #[serde(default)]
+    pub agent: AgentConfig,
 }
 
 /// OpenRouter configuration
@@ -95,6 +99,26 @@ pub struct InterfaceConfig {
     /// Enable colors
     #[serde(default = "default_enable_colors")]
     pub enable_colors: bool,
+}
+
+/// Agent configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentConfig {
+    /// System prompt
+    #[serde(default = "default_system_prompt")]
+    pub system_prompt: String,
+}
+
+impl Default for AgentConfig {
+    fn default() -> Self {
+        Self {
+            system_prompt: default_system_prompt(),
+        }
+    }
+}
+
+fn default_system_prompt() -> String {
+    "You are Eye, a helpful personal intelligent assistant.".to_string()
 }
 
 impl Settings {

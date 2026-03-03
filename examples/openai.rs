@@ -46,7 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("1. Basic Conversation Example");
     println!("-----------------------------");
     if has_api_key {
-        //basic_conversation().await?;
+        basic_conversation().await?;
     } else {
         println!("[Code structure shown - would make API call with valid key]");
         println!("Message: \"What is the capital of France?\"");
@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("2. Multi-turn Conversation Example");
     println!("----------------------------------");
     if has_api_key {
-        //multi_turn_conversation().await?;
+        multi_turn_conversation().await?;
     } else {
         println!("[Code structure shown - would make API call with valid key]");
         println!("Multi-turn conversation with travel assistant about Japan");
@@ -70,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("3. Streaming Response Example");
     println!("-----------------------------");
     if has_api_key {
-        //streaming_response().await?;
+        streaming_response().await?;
     } else {
         println!("[Code structure shown - would make API call with valid key]");
         println!("Streaming response for poem about Rust programming");
@@ -94,7 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("5. JSON Schema Output Example");
     println!("-----------------------------");
     if has_api_key {
-        //json_schema_output().await?;
+        json_schema_output().await?;
     } else {
         println!("[Code structure shown - would make API call with valid key]");
         println!("JSON schema output for book information");
