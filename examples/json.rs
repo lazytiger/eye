@@ -1,52 +1,27 @@
-use openai_api_rs::v1::types::FunctionParameters;
-use serde_json::json;
+
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ToolChoice {
+    None,
+    Auto,
+    Required,
+    Function { function: FunctionChoice },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FunctionChoice {
+    name: String,
+}
 
 fn main() {
-    let v = json!({
-        "type": "object",
-        "properties": {
-            "operation": {
-                "type": "string",
-                "enum": ["status", "diff", "log", "branch", "commit", "add", "checkout", "stash"],
-                "description": "Git operation to perform"
-            },
-            "message": {
-                "type": "string",
-                "description": "Commit message (for 'commit' operation)"
-            },
-            "paths": {
-                "type": "string",
-                "description": "File paths to stage (for 'add' operation)"
-            },
-            "branch": {
-                "type": "string",
-                "description": "Branch name (for 'checkout' operation)"
-            },
-            "files": {
-                "type": "string",
-                "description": "File or path to diff (for 'diff' operation, default: '.')"
-            },
-            "cached": {
-                "type": "boolean",
-                "description": "Show staged changes (for 'diff' operation)"
-            },
-            "limit": {
-                "type": "number",
-                "description": "Number of log entries (for 'log' operation, default: 10)"
-            },
-            "action": {
-                "type": "string",
-                "enum": ["push", "pop", "list", "drop"],
-                "description": "Stash action (for 'stash' operation)"
-            },
-            "index": {
-                "type": "number",
-                "description": "Stash index (for 'stash' with 'drop' action)"
-            }
-        },
-        "required": ["operation"]
-    });
-
-    let tool: FunctionParameters = serde_json::from_value(v).unwrap();
-    println!("{:?}", tool);
+    let auto = ToolChoice::Auto;
+    let json = serde_json::to_string(&auto).unwrap();
+    println!("Auto: {}", json);
+    
+    // Check if it serializes to {"type":"auto"} which is incorrect for OpenAI
+    // OpenAI expects "auto" string for auto, and object for function
+    assert_eq!(json, r#"{"type":"auto"}"#); 
+    println!("Test confirmed: ToolChoice::Auto serializes to object instead of string");
 }

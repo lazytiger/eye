@@ -159,7 +159,7 @@ pub struct Request {
     pub parallel_tool_calls: Option<bool>,
     /// Tool choice strategy
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_choice: Option<ToolChoice>,
+    pub tool_choice: Option<Content<ToolChoice>>,
     /// List of tools available to the model
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<Tool>>,
@@ -269,6 +269,27 @@ pub enum ToolChoice {
     Auto,
     Required,
     Function { function: FunctionChoice },
+}
+
+impl TextContent for ToolChoice {
+    fn get_text(&self) -> Option<String> {
+        let name = match self {
+            ToolChoice::None => "none",
+            ToolChoice::Auto => "auto",
+            ToolChoice::Required => "required",
+            ToolChoice::Function { .. } => return None,
+        };
+        Some(name.to_string())
+    }
+
+    fn new(text: String) -> Self {
+        match text.as_str() {
+            "none" => ToolChoice::None,
+            "auto" => ToolChoice::Auto,
+            "required" => ToolChoice::Required,
+            _ => ToolChoice::None,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -548,7 +569,7 @@ pub struct PromptTokensDetail {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Choice {
-    pub finish_reason: String,
+    pub finish_reason: Option<String>,
     /// Choice index
     pub index: usize,
     /// Assistant message for requests and responses
