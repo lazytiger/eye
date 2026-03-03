@@ -2,7 +2,7 @@
 //!
 //! CLI implementation of the Interface trait using console I/O
 
-use super::{base::BaseInterface, r#trait::*};
+use super::{Interface, MessageRole, Usage};
 use crate::config::settings::InterfaceConfig;
 use anyhow::Result;
 use console::{style, Term};
@@ -30,13 +30,13 @@ impl CliInterface {
         if self.config.enable_colors {
             // Map ANSI color codes to console styles
             let styled_text = match color_code {
-                "34" => style(text).blue(),      // Blue
-                "32" => style(text).green(),     // Green
-                "33" => style(text).yellow(),    // Yellow
-                "35" => style(text).magenta(),   // Purple/Magenta
-                "36" => style(text).cyan(),      // Cyan
-                "31" => style(text).red(),       // Red
-                "1" => style(text).bold(),       // Bold
+                "34" => style(text).blue(),    // Blue
+                "32" => style(text).green(),   // Green
+                "33" => style(text).yellow(),  // Yellow
+                "35" => style(text).magenta(), // Purple/Magenta
+                "36" => style(text).cyan(),    // Cyan
+                "31" => style(text).red(),     // Red
+                "1" => style(text).bold(),     // Bold
                 _ => style(text),
             };
             print!("{}", styled_text);
@@ -61,28 +61,6 @@ impl CliInterface {
             print!("[{:02}:{:02}:{:02}] ", hours, minutes, secs);
             self.term.flush().unwrap();
         }
-    }
-}
-
-#[async_trait::async_trait]
-impl BaseInterface for CliInterface {
-    async fn send(&self, message: String) -> Result<()> {
-        // Display as assistant message by default
-        self.display_message(&message, MessageRole::Assistant).await
-    }
-    
-    async fn listen(&self, response_tx: Sender<String>) -> Result<()> {
-        // Start listening loop
-        loop {
-            let input = self.get_user_input().await?;
-            
-            // Send input to agent for processing
-            if response_tx.send(input).await.is_err() {
-                break; // Channel closed, stop listening
-            }
-        }
-        
-        Ok(())
     }
 }
 
@@ -157,10 +135,10 @@ impl Interface for CliInterface {
         self.print_colored(&self.config.prompt, "1"); // Bold
 
         self.term.flush()?;
-        
+
         // Use console's read_line with initial text for better UX
         let input = self.term.read_line_initial_text("")?;
-        
+
         Ok(input.trim().to_string())
     }
 
@@ -192,6 +170,25 @@ impl Interface for CliInterface {
             "Prompt: {}, Completion: {}, Total: {}",
             usage.prompt_tokens, usage.completion_tokens, usage.total_tokens
         ))?;
+
+        Ok(())
+    }
+
+    async fn send(&self, message: String) -> Result<()> {
+        // Display as assistant message by default
+        self.display_message(&message, MessageRole::Assistant).await
+    }
+
+    async fn listen(&self, response_tx: Sender<String>) -> Result<()> {
+        // Start listening loop
+        loop {
+            let input = self.get_user_input().await?;
+
+            // Send input to agent for processing
+            if response_tx.send(input).await.is_err() {
+                break; // Channel closed, stop listening
+            }
+        }
 
         Ok(())
     }

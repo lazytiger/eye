@@ -2,10 +2,10 @@
 //!
 //! Tool implementation for executing shell commands
 
-use super::r#trait::*;
 use crate::config::settings::ShellConfig;
+use crate::tool::{Tool, ToolDefinition, ToolResult};
 use anyhow::{Context, Result};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     process::{Command, Stdio},
     time::Duration,

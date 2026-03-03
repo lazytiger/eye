@@ -12,22 +12,19 @@
 //! - For OpenRouter, set OPENROUTER_API_KEY instead
 
 use chrono::Local;
+use eye::OptionToResult;
 use openai_api_rs::v1::api::OpenAIClient;
 use openai_api_rs::v1::chat_completion::chat_completion::ChatCompletionRequest;
 use openai_api_rs::v1::chat_completion::chat_completion_stream::{
     ChatCompletionStreamRequest, ChatCompletionStreamResponse,
 };
-use openai_api_rs::v1::chat_completion::{
-    ChatCompletionMessage, Content, MessageRole, Tool, ToolType,
-};
-use openai_api_rs::v1::common::GPT4_O;
-use openai_api_rs::v1::types::{Function, FunctionParameters, JSONSchemaDefine, JSONSchemaType};
+use openai_api_rs::v1::chat_completion::{ChatCompletionMessage, Content, MessageRole, Tool};
+use serde::Deserialize;
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use std::env;
 use tokio_stream::StreamExt;
 
-const MODEL: &str = "deepseek/deepseek-v3.2";
+const MODEL: &str = "google/gemini-3.1-pro-preview";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -243,6 +240,11 @@ async fn streaming_response() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[derive(Debug, Deserialize)]
+pub struct MarkCacheableParam {
+    cacheable: bool,
+}
+
 /// Example 4: Tool/function calling
 async fn tool_calling() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = create_client()?;
@@ -259,25 +261,6 @@ async fn tool_calling() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     let tool1: Tool = serde_json::from_value(tool1)?;
-    let tool2 = Tool {
-            r#type: ToolType::Function,
-            function: Function {
-                name: "mark_cacheable".into(),
-                description: Some("Indicate whether the current request/response is eligible for response caching. This tool is called for every request. If the request can be safely cached (no context dependence, no realtime data, deterministic answer), cacheable is true; otherwise false.".into()),
-                parameters: FunctionParameters {
-                    schema_type: JSONSchemaType::Object,
-                    properties: Some(HashMap::from([("cacheable".to_string(), Box::new(JSONSchemaDefine{
-                        schema_type: Some(JSONSchemaType::Boolean),
-                        description: Some("Whether the current request is eligible for response caching.".to_string()),
-                        enum_values: None,
-                        properties: None,
-                        required: None,
-                        items: None,
-                    }))])),
-                    required: Some(vec!["cacheable".to_string()]),
-                },
-            },
-        };
 
     let tool2 = json!({
         "type": "function",
@@ -322,12 +305,13 @@ async fn tool_calling() -> Result<(), Box<dyn std::error::Error>> {
     for i in 0..10 {
         // Note: Tool calling requires specific provider support (GPT-4 with function calling)
         // For this example, we make a regular request and show how tool calls would be handled
-        let mut request = ChatCompletionRequest::new(GPT4_O.to_string(), messages.clone());
+        let mut request = ChatCompletionRequest::new(MODEL.to_string(), messages.clone());
         if i == 0 {
             request.tools = Some(vec![tool1.clone(), tool2.clone()]);
         } else {
             request.tools = Some(vec![tool1.clone()]);
         }
+        request.max_tokens = Some(4096);
 
         let result = client.chat_completion(request).await?;
 
@@ -360,7 +344,9 @@ async fn tool_calling() -> Result<(), Box<dyn std::error::Error>> {
                 // 3. Send the result back to the provider for a final response
                 match tool_call.function.name.as_ref().map(|s| s.as_str()) {
                     Some("mark_cacheable") => {
-                        println!("  Mark cacheable");
+                        let args = tool_call.function.arguments.as_ref().to_ok()?;
+                        let args: MarkCacheableParam = serde_json::from_str(args)?;
+                        println!("  Mark cacheable:{}", args.cacheable);
                     }
                     Some("datetime") => {
                         messages.push(ChatCompletionMessage {

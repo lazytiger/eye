@@ -2,8 +2,10 @@
 //!
 //! Implements OpenRouter client using openai-api-rs crate
 
-use super::r#trait::*;
 use crate::config::settings::OpenRouterConfig;
+use crate::provider::{
+    ChatCompletionRequest, ChatCompletionResponse, ChatMessage, MessageRole, ModelProvider, Usage,
+};
 use anyhow::Result;
 
 /// OpenRouter provider provider
