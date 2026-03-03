@@ -172,11 +172,8 @@ pub struct Request {
 }
 
 impl Request {
-    pub fn new(model: impl Into<String>) -> Self {
-        Request {
-            model: Some(model.into()),
-            ..Default::default()
-        }
+    pub fn new() -> Self {
+        Default::default()
     }
 
     pub fn add_user_message(&mut self, text: impl Into<String>) -> &mut Self {

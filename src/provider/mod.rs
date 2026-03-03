@@ -14,5 +14,5 @@ pub use self::types::*;
 pub trait Provider {
     fn name(&self) -> &str;
 
-    async fn chat(&self, request: &Request) -> anyhow::Result<Response>;
+    async fn chat(&self, request: Request) -> anyhow::Result<Response>;
 }
