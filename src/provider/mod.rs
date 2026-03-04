@@ -6,6 +6,7 @@
 //! - Message and tool call type definitions
 
 pub mod compatible;
+pub mod deepseek;
 pub mod types;
 
 pub use self::types::*;
