@@ -136,7 +136,7 @@ pub struct Request {
     pub frequency_penalty: Option<f32>,
     ///Maximum tokens in completion
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_completion_tokens: Option<u64>,
+    pub max_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub presence_penalty: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]

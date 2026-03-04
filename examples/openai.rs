@@ -12,14 +12,12 @@
 //! - For OpenRouter, set OPENROUTER_API_KEY instead
 
 use chrono::Local;
-use eye::provider::openai::OpenaiCompatibleProvider;
+use eye::provider::compatible::OpenaiCompatibleProvider;
 use eye::provider::{Content, Provider, Request, Tool};
 use eye::OptionToResult;
 use serde::Deserialize;
 use serde_json::json;
 use std::env;
-use std::sync::Arc;
-use tokio_stream::StreamExt;
 
 const MODEL: &str = "deepseek-chat";
 
@@ -81,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Example 1: Basic conversation
 async fn basic_conversation() -> Result<(), Box<dyn std::error::Error>> {
-    let mut client = create_client()?;
+    let client = create_client()?;
 
     let mut request = Request::new();
     request.add_user_message("What is the capital of France?".to_string());
@@ -98,7 +96,7 @@ async fn basic_conversation() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Example 2: Multi-turn conversation
 async fn multi_turn_conversation() -> Result<(), Box<dyn std::error::Error>> {
-    let mut client = create_client()?;
+    let client = create_client()?;
 
     // Simulate a conversation history
     let mut request = Request::new();
@@ -127,7 +125,7 @@ pub struct MarkCacheableParam {
 
 /// Example 4: Tool/function calling
 async fn tool_calling() -> Result<(), Box<dyn std::error::Error>> {
-    let mut client = create_client()?;
+    let client = create_client()?;
 
     let tool1 = json!({
         "type": "function",
@@ -175,7 +173,7 @@ async fn tool_calling() -> Result<(), Box<dyn std::error::Error>> {
             request.tools = Some(vec![tool1.clone()]);
             request.tool_choice = None;
         }
-        request.max_completion_tokens = Some(4096);
+        request.max_tokens = Some(4096);
 
         let result = client.chat(request.clone()).await?;
 
@@ -241,7 +239,6 @@ async fn tool_calling() -> Result<(), Box<dyn std::error::Error>> {
 fn create_client() -> anyhow::Result<OpenaiCompatibleProvider> {
     println!("DEEPSEEK_API_KEY: {:?}", env::var("DEEPSEEK_API_KEY"));
     // Try OpenRouter first, then OpenAI
-    let client = Arc::new(reqwest::Client::new());
     if let Ok(api_key) = env::var("OPENROUTER_API_KEY") {
         println!("Using OpenRouter API");
         let client = OpenaiCompatibleProvider::new(
@@ -249,7 +246,6 @@ fn create_client() -> anyhow::Result<OpenaiCompatibleProvider> {
             MODEL.to_string(),
             "https://openrouter.ai/api/v1".to_string(),
             api_key,
-            client,
         );
         Ok(client)
     } else if let Ok(api_key) = env::var("DEEPSEEK_API_KEY") {
@@ -258,7 +254,6 @@ fn create_client() -> anyhow::Result<OpenaiCompatibleProvider> {
             MODEL.to_string(),
             "https://api.deepseek.com".to_string(),
             api_key,
-            client,
         );
         Ok(client)
     } else {

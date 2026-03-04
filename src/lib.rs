@@ -33,6 +33,7 @@ pub mod interface;
 pub mod provider;
 pub mod skill;
 pub mod tool;
+pub mod utils;
 
 pub mod memory;
 

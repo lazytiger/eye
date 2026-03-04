@@ -5,7 +5,7 @@
 //! - OpenRouter implementation
 //! - Message and tool call type definitions
 
-pub mod openai;
+pub mod compatible;
 pub mod types;
 
 pub use self::types::*;

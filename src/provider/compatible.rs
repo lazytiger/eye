@@ -1,29 +1,20 @@
 use crate::provider::{Provider, Request, Response};
-use reqwest::Client;
-use std::sync::Arc;
+use crate::utils::{get_user_agent, reqwest_client};
 
 pub struct OpenaiCompatibleProvider {
     name: String,
     model: String,
     endpoint: String,
     api_key: String,
-    client: Arc<Client>,
 }
 
 impl OpenaiCompatibleProvider {
-    pub fn new(
-        name: String,
-        model: String,
-        endpoint: String,
-        api_key: String,
-        client: Arc<Client>,
-    ) -> Self {
+    pub fn new(name: String, model: String, endpoint: String, api_key: String) -> Self {
         Self {
             name,
             model,
             endpoint,
             api_key,
-            client,
         }
     }
 }
@@ -37,18 +28,18 @@ impl Provider for OpenaiCompatibleProvider {
     async fn chat(&self, mut request: Request) -> anyhow::Result<Response> {
         request.model = Some(self.model.clone());
         let url = format!("{}/chat/completions", self.endpoint);
-        println!("request:{}", serde_json::to_string(&request)?);
-        let response = self
-            .client
+        tracing::debug!("request:{}", serde_json::to_string(&request)?);
+        let response = reqwest_client()
             .post(url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
+            .header("User-Agent", get_user_agent())
             .json(&request)
             .send()
             .await?;
-        println!("waiting for response");
         if response.status().is_success() {
             let response = response.json::<Response>().await?;
+            tracing::debug!("response:{}", serde_json::to_string(&response)?);
             Ok(response)
         } else {
             let text = response.text().await?;
