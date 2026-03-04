@@ -7,6 +7,7 @@
 
 pub mod compatible;
 pub mod deepseek;
+pub mod openai;
 pub mod openrouter;
 pub mod types;
 
