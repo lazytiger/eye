@@ -9,12 +9,17 @@ pub struct OpenaiCompatibleProvider {
 }
 
 impl OpenaiCompatibleProvider {
-    pub fn new(name: String, model: String, endpoint: String, api_key: String) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        model: impl Into<String>,
+        endpoint: impl Into<String>,
+        api_key: impl Into<String>,
+    ) -> Self {
         Self {
-            name,
-            model,
-            endpoint,
-            api_key,
+            name: name.into(),
+            model: model.into(),
+            endpoint: endpoint.into(),
+            api_key: api_key.into(),
         }
     }
 }

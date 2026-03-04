@@ -1,4 +1,4 @@
-use derive_more::with_trait::Deref;
+use derive_more::with_trait::{Deref, From};
 use serde::{
     de::{value::MapAccessDeserializer, Visitor}, Deserialize,
     Serialize,
@@ -60,6 +60,24 @@ impl TextContent for ChatMessageContent {
 
 #[derive(Debug, Clone, Deref)]
 pub struct Content<T: Clone>(pub T);
+
+impl<A> From<A> for Content<ChatMessageContent>
+where
+    A: Into<ChatMessageContent>,
+{
+    fn from(value: A) -> Self {
+        Content(value.into())
+    }
+}
+
+impl<A> From<A> for Content<SystemMessageContent>
+where
+    A: Into<SystemMessageContent>,
+{
+    fn from(value: A) -> Self {
+        Content(value.into())
+    }
+}
 
 impl<T> Serialize for Content<T>
 where
@@ -481,6 +499,24 @@ pub enum ChatMessageContent {
         #[serde(skip_serializing_if = "Option::is_none")]
         file_name: Option<String>,
     },
+}
+
+impl From<String> for ChatMessageContent {
+    fn from(value: String) -> Self {
+        ChatMessageContent::Text {
+            text: value,
+            cache_control: None,
+        }
+    }
+}
+
+impl From<String> for SystemMessageContent {
+    fn from(value: String) -> Self {
+        SystemMessageContent::Text {
+            text: value,
+            cache_control: None,
+        }
+    }
 }
 
 /// Video input object

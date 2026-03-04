@@ -13,3 +13,5 @@ pub async fn init_database(url: &str) -> anyhow::Result<DatabasePool> {
     let pool = SqlitePool::connect_with(pool_options).await?;
     Ok(pool)
 }
+
+pub mod history;
