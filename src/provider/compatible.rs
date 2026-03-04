@@ -1,5 +1,5 @@
 use crate::provider::{Provider, Request, Response};
-use crate::utils::{get_user_agent, reqwest_client};
+use crate::utils::{reqwest_client, user_agent};
 
 pub struct OpenaiCompatibleProvider {
     name: String,
@@ -33,7 +33,7 @@ impl Provider for OpenaiCompatibleProvider {
             .post(url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
-            .header("User-Agent", get_user_agent())
+            .header("User-Agent", user_agent())
             .json(&request)
             .send()
             .await?;
