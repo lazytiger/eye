@@ -1,0 +1,344 @@
+openapi: 3.0.3
+info:
+  title: OpenAI-Compatible Chat Completions API (With Tools)
+  version: "1.1.0"
+  description: >
+    OpenAI-compatible Chat Completions API including tool/function calling support.
+
+servers:
+  - url: https://api.example.com
+    description: Replace with actual base URL
+
+paths:
+  /v1/chat/completions:
+    post:
+      summary: Create chat completion (with tools support)
+      operationId: createChatCompletion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCompletionRequest'
+      responses:
+        '200':
+          description: Successful completion response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCompletionResponse'
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthorized
+        '500':
+          description: Server error
+
+components:
+  schemas:
+
+    ChatCompletionRequest:
+      type: object
+      required:
+        - model
+        - messages
+      properties:
+        model:
+          type: string
+          example: gpt-4o-mini
+
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+          default: 1
+
+        top_p:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 1
+
+        stream:
+          type: boolean
+          default: false
+
+        tools:
+          type: array
+          description: List of callable tools (functions)
+          items:
+            $ref: '#/components/schemas/Tool'
+
+        tool_choice:
+          description: Control tool invocation behavior
+          oneOf:
+            - type: string
+              enum: [ auto, none, required ]
+            - type: object
+              properties:
+                type:
+                  type: string
+                  enum: [ function ]
+                function:
+                  type: object
+                  required: [ name ]
+                  properties:
+                    name:
+                      type: string
+
+        max_tokens:
+          type: integer
+          minimum: 1
+          description: Maximum number of tokens to generate
+
+        n:
+          type: integer
+          minimum: 1
+          default: 1
+          description: Number of chat completion choices to generate
+
+        stop:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+
+        frequency_penalty:
+          type: number
+          minimum: -2
+          maximum: 2
+          default: 0
+
+        presence_penalty:
+          type: number
+          minimum: -2
+          maximum: 2
+          default: 0
+
+        logit_bias:
+          type: object
+          additionalProperties:
+            type: integer
+
+        logprobs:
+          type: boolean
+          default: false
+
+        top_logprobs:
+          type: integer
+          minimum: 0
+          maximum: 20
+
+        seed:
+          type: integer
+
+        user:
+          type: string
+          description: Unique identifier for the end-user
+
+        response_format:
+          oneOf:
+            - type: object
+              properties:
+                type:
+                  type: string
+                  enum: [ text, json_object ]
+            - type: object
+              properties:
+                type:
+                  type: string
+                  enum: [ json_schema ]
+                json_schema:
+                  type: object
+                  required: [ name, schema ]
+                  properties:
+                    name:
+                      type: string
+                    description:
+                      type: string
+                    schema:
+                      type: object
+                    strict:
+                      type: boolean
+
+        parallel_tool_calls:
+          type: boolean
+          default: true
+
+        stream_options:
+          type: object
+          properties:
+            include_usage:
+              type: boolean
+
+    ChatMessage:
+      type: object
+      required:
+        - role
+      properties:
+        role:
+          type: string
+          enum:
+            - system
+            - user
+            - assistant
+            - tool
+        content:
+          type: string
+          nullable: true
+        name:
+          type: string
+        tool_calls:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolCall'
+        tool_call_id:
+          type: string
+          description: Required when role is tool
+
+    Tool:
+      type: object
+      required:
+        - type
+        - function
+      properties:
+        type:
+          type: string
+          enum: [ function ]
+        function:
+          $ref: '#/components/schemas/FunctionDefinition'
+
+    FunctionDefinition:
+      type: object
+      required:
+        - name
+        - parameters
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        parameters:
+          type: object
+          description: JSON Schema describing function parameters
+        strict:
+          type: boolean
+
+    ToolCall:
+      type: object
+      required:
+        - id
+        - type
+        - function
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [ function ]
+        function:
+          type: object
+          required:
+            - name
+            - arguments
+          properties:
+            name:
+              type: string
+            arguments:
+              type: string
+              description: JSON string of arguments
+
+    ChatCompletionResponse:
+      type: object
+      required:
+        - id
+        - object
+        - created
+        - model
+        - choices
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          example: chat.completion
+        created:
+          type: integer
+        model:
+          type: string
+        choices:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatChoice'
+        usage:
+          $ref: '#/components/schemas/Usage'
+        system_fingerprint:
+          type: string
+
+    ChatChoice:
+      type: object
+      required:
+        - index
+        - finish_reason
+      properties:
+        index:
+          type: integer
+        message:
+          $ref: '#/components/schemas/ChatMessage'
+        finish_reason:
+          type: string
+          example: stop
+        logprobs:
+          $ref: '#/components/schemas/Logprobs'
+
+    Logprobs:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogprobContent'
+
+    LogprobContent:
+      type: object
+      properties:
+        token:
+          type: string
+        logprob:
+          type: number
+        bytes:
+          type: array
+          items:
+            type: integer
+        top_logprobs:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopLogprob'
+
+    TopLogprob:
+      type: object
+      properties:
+        token:
+          type: string
+        logprob:
+          type: number
+        bytes:
+          type: array
+          items:
+            type: integer
+
+    Usage:
+      type: object
+      properties:
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+        total_tokens:
+          type: integer

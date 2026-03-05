@@ -20,7 +20,7 @@ use std::env;
 pub trait Provider {
     fn name(&self) -> &str;
 
-    async fn chat(&self, request: Request) -> anyhow::Result<Response>;
+    fn max_context_length(&self) -> usize;
 }
 
 pub fn create_openai_compatible(

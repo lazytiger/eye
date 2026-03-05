@@ -14,4 +14,4 @@ pub async fn init_database(url: &str) -> anyhow::Result<DatabasePool> {
     Ok(pool)
 }
 
-pub mod history;
+//pub mod history;
