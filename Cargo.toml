@@ -24,6 +24,7 @@ toml = "1.0"
 # Async runtime
 tokio = { version = "1.40", features = ["full"] }
 tokio-stream = "0.1"
+futures = "0.3"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -33,6 +34,9 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 
 # Async trait support
 async-trait = "0.1"
+
+# Bitflags for model capabilities
+bitflags = "2.5"
 
 console = "0.16"
 dialoguer = "0.12"

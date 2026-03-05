@@ -1,122 +1,84 @@
-//! Tool module
+//! Tool abstraction module
 //!
-//! Manages the tool system, including:
-//! - Tool trait definition
-//! - Tool implementations (e.g., Shell command execution)
-//! - Tool manager
-//! Tool trait definition
-//!
-//! Defines the Tool trait to abstract different tool capabilities
+//! This module provides the core abstractions for tools that can be invoked by LLMs.
+//! Tools are capabilities that models can use to perform actions in the real world.
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
-
-use crate::config::settings::ToolsConfig;
-use crate::tool::shell::ShellTool;
 use anyhow::Result;
-use std::{collections::HashMap, sync::Arc};
 
-/// Tool call result
-#[derive(Debug, Clone)]
-pub struct ToolResult {
-    /// Tool call ID
-    pub tool_call_id: String,
-    /// Tool name
-    pub tool_name: String,
-    /// Execution result
-    pub result: Value,
-    /// Whether execution succeeded
-    pub success: bool,
-    /// Error message (if any)
-    pub error: Option<String>,
+/// Represents the outcome of a tool execution
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ExecuteResult {
+    /// The execution was successful. Contains the result data.
+    Success(Value),
+    /// The execution failed. Contains the error message or details.
+    Failure(String),
 }
 
-/// Tool definition
-#[derive(Debug, Clone)]
+/// Represents a tool independently of any specific model provider
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {
-    /// Tool name
+    /// Unique name of the tool
     pub name: String,
-    /// Tool description
+    /// Description of what the tool does
     pub description: String,
-    /// Tool parameter schema (JSON Schema)
+    /// JSON Schema for the arguments the tool accepts
     pub parameters: Value,
 }
 
-/// Tool trait
+/// Represents a request from the LLM to execute a tool
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    /// Unique identifier for this tool call
+    pub id: String,
+    /// Name of the tool to execute
+    pub name: String,
+    /// Arguments for the tool (JSON object)
+    pub arguments: Value,
+}
+
+/// Represents the result of a tool execution to be sent back to the LLM
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolOutput {
+    /// Matches the ToolCall id
+    pub id: String,
+    /// Stringified JSON or text result
+    pub content: String,
+}
+
+/// Core trait for tools that can be invoked by LLMs
 #[async_trait]
 pub trait Tool: Send + Sync {
-    /// Get tool definition
-    fn definition(&self) -> ToolDefinition;
+    /// Returns the unique name of the tool (e.g., "get_weather", "search_web").
+    /// This name is what the LLM uses to invoke the tool.
+    fn name(&self) -> &str;
 
-    /// Execute a tool call
-    async fn execute(&self, arguments: Value) -> Result<ToolResult>;
+    /// Returns a description of what the tool does.
+    /// This helps the LLM understand when to use the tool.
+    fn description(&self) -> &str;
 
-    /// Validate arguments
-    fn validate_arguments(&self, arguments: &Value) -> Result<()>;
+    /// Returns the JSON Schema for the arguments the tool accepts.
+    /// This defines the structure of the input the LLM must provide.
+    fn parameters(&self) -> Value;
+
+    /// Executes the tool logic with the given arguments.
+    /// Returns an ExecuteResult which can be Success or Failure.
+    async fn execute(&self, args: Value) -> Result<ExecuteResult>;
+    
+    /// Returns the independent definition of the tool.
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: self.name().to_string(),
+            description: self.description().to_string(),
+            parameters: self.parameters(),
+        }
+    }
 }
 
+/// Shell tool for executing commands
 pub mod shell;
 
-/// Tool manager
-pub struct ToolManager {
-    /// Tool registry
-    tools: HashMap<String, Arc<dyn Tool>>,
-}
-
-impl ToolManager {
-    /// Create new tool manager
-    pub fn new(config: &ToolsConfig) -> Self {
-        let mut tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
-
-        // Add tools based on configuration
-        for tool_name in &config.enabled {
-            match tool_name.as_str() {
-                "shell" => {
-                    let shell_tool = ShellTool::new(config.shell.clone());
-                    tools.insert(
-                        "execute_shell_command".to_string(),
-                        Arc::new(shell_tool) as Arc<dyn Tool>,
-                    );
-                }
-                _ => {
-                    // Ignore unknown tools
-                }
-            }
-        }
-
-        Self { tools }
-    }
-
-    /// Get all tool definitions
-    pub fn get_tool_definitions(&self) -> Vec<ToolDefinition> {
-        self.tools.values().map(|tool| tool.definition()).collect()
-    }
-
-    /// Execute a tool call
-    pub async fn execute_tool(
-        &self,
-        tool_name: &str,
-        tool_call_id: &str,
-        arguments: serde_json::Value,
-    ) -> Result<ToolResult> {
-        let tool = self
-            .tools
-            .get(tool_name)
-            .ok_or_else(|| anyhow::anyhow!("Tool '{}' not found", tool_name))?;
-
-        let mut result = tool.execute(arguments).await?;
-        result.tool_call_id = tool_call_id.to_string();
-
-        Ok(result)
-    }
-
-    /// Get tool list
-    pub fn list_tools(&self) -> Vec<String> {
-        self.tools.keys().cloned().collect()
-    }
-
-    /// Check if a tool exists
-    pub fn has_tool(&self, tool_name: &str) -> bool {
-        self.tools.contains_key(tool_name)
-    }
-}
+/// Re-export shell tool
+pub use shell::ShellTool;

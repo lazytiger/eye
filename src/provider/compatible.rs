@@ -347,4 +347,300 @@ impl OpenaiCompatibleProvider {
             api_key: api_key.into(),
         }
     }
+
+    /// Helper method to convert unified ChatRequest to OpenAI-compatible request
+    fn convert_chat_request(&self, request: crate::provider::types::ChatRequest) -> ChatCompletionRequest {
+        // Convert messages
+        let messages = request.messages.into_iter().map(|msg| {
+            ChatMessage {
+                role: match msg.role {
+                    crate::provider::types::Role::System => Role::System,
+                    crate::provider::types::Role::User => Role::User,
+                    crate::provider::types::Role::Assistant => Role::Assistant,
+                    crate::provider::types::Role::Tool => Role::Tool,
+                },
+                content: msg.content,
+                name: msg.name,
+                tool_calls: msg.tool_calls.map(|calls| {
+                    calls.into_iter().map(|call| {
+                        ToolCall {
+                            id: call.id,
+                            tool_type: call.tool_type,
+                            function: ToolCallFunction {
+                                name: call.function.name,
+                                arguments: call.function.arguments,
+                            },
+                        }
+                    }).collect()
+                }),
+                tool_call_id: msg.tool_call_id,
+            }
+        }).collect();
+
+        // Convert tools
+        let tools = request.tools.map(|tools| {
+            tools.into_iter().map(|tool| {
+                Tool {
+                    tool_type: tool.tool_type,
+                    function: FunctionDefinition {
+                        name: tool.function.name,
+                        description: tool.function.description,
+                        parameters: tool.function.parameters,
+                        strict: tool.function.strict,
+                    },
+                }
+            }).collect()
+        });
+
+        // Convert tool choice
+        let tool_choice = request.tool_choice.map(|choice| match choice {
+            crate::provider::types::ToolChoice::String(s) => ToolChoice::String(s),
+            crate::provider::types::ToolChoice::Object(obj) => ToolChoice::Object(NamedToolChoice {
+                tool_type: obj.tool_type,
+                function: NamedToolChoiceFunction {
+                    name: obj.function.name,
+                },
+            }),
+        });
+
+        // Convert response format
+        let response_format = request.response_format.map(|format| match format {
+            crate::provider::types::ResponseFormat::Text => ResponseFormat::Text,
+            crate::provider::types::ResponseFormat::JsonObject => ResponseFormat::JsonObject,
+            crate::provider::types::ResponseFormat::JsonSchema { json_schema } => ResponseFormat::JsonSchema {
+                json_schema: JsonSchemaFormat {
+                    name: json_schema.name,
+                    description: json_schema.description,
+                    schema: json_schema.schema,
+                    strict: json_schema.strict,
+                },
+            },
+        });
+
+        // Convert stop
+        let stop = request.stop.map(|stop| match stop {
+            crate::provider::types::Stop::Single(s) => Stop::Single(s),
+            crate::provider::types::Stop::Multiple(v) => Stop::Multiple(v),
+        });
+
+        // Convert stream options
+        let stream_options = request.stream_options.map(|opts| StreamOptions {
+            include_usage: opts.include_usage,
+        });
+
+        ChatCompletionRequest {
+            messages,
+            model: request.model,
+            temperature: request.temperature,
+            top_p: request.top_p,
+            stream: request.stream,
+            tools,
+            tool_choice,
+            max_tokens: request.max_tokens,
+            n: request.n,
+            stop,
+            frequency_penalty: request.frequency_penalty,
+            presence_penalty: request.presence_penalty,
+            logit_bias: request.logit_bias,
+            logprobs: request.logprobs,
+            top_logprobs: request.top_logprobs,
+            seed: request.seed,
+            user: request.user,
+            response_format,
+            parallel_tool_calls: request.parallel_tool_calls,
+            stream_options,
+        }
+    }
+
+    /// Helper method to convert OpenAI-compatible response to unified ChatResponse
+    fn convert_chat_response(&self, response: ChatCompletionResponse) -> crate::provider::types::ChatResponse {
+        // Convert choices
+        let choices = response.choices.into_iter().map(|choice| {
+            crate::provider::types::ChatChoice {
+                index: choice.index,
+                message: crate::provider::types::ChatMessage {
+                    role: match choice.message.role {
+                        Role::System => crate::provider::types::Role::System,
+                        Role::User => crate::provider::types::Role::User,
+                        Role::Assistant => crate::provider::types::Role::Assistant,
+                        Role::Tool => crate::provider::types::Role::Tool,
+                    },
+                    content: choice.message.content,
+                    name: choice.message.name,
+                    tool_calls: choice.message.tool_calls.map(|calls| {
+                        calls.into_iter().map(|call| {
+                            crate::provider::types::ToolCall {
+                                id: call.id,
+                                tool_type: call.tool_type,
+                                function: crate::provider::types::ToolCallFunction {
+                                    name: call.function.name,
+                                    arguments: call.function.arguments,
+                                },
+                            }
+                        }).collect()
+                    }),
+                    tool_call_id: choice.message.tool_call_id,
+                },
+                finish_reason: match choice.finish_reason {
+                    FinishReason::Stop => crate::provider::types::FinishReason::Stop,
+                    FinishReason::Length => crate::provider::types::FinishReason::Length,
+                    FinishReason::ToolCalls => crate::provider::types::FinishReason::ToolCalls,
+                    FinishReason::ContentFilter => crate::provider::types::FinishReason::ContentFilter,
+                    FinishReason::FunctionCall => crate::provider::types::FinishReason::FunctionCall,
+                },
+                logprobs: choice.logprobs.map(|logprobs| {
+                    crate::provider::types::Logprobs {
+                        content: logprobs.content.map(|content| {
+                            content.into_iter().map(|item| {
+                                crate::provider::types::LogprobContent {
+                                    token: item.token,
+                                    logprob: item.logprob,
+                                    bytes: item.bytes,
+                                    top_logprobs: item.top_logprobs.map(|top_logprobs| {
+                                        top_logprobs.into_iter().map(|top| {
+                                            crate::provider::types::TopLogprob {
+                                                token: top.token,
+                                                logprob: top.logprob,
+                                                bytes: top.bytes,
+                                            }
+                                        }).collect()
+                                    }),
+                                }
+                            }).collect()
+                        }),
+                    }
+                }),
+            }
+        }).collect();
+
+        // Convert usage
+        let usage = response.usage.map(|usage| crate::provider::types::Usage {
+            prompt_tokens: usage.prompt_tokens,
+            completion_tokens: usage.completion_tokens,
+            total_tokens: usage.total_tokens,
+        });
+
+        crate::provider::types::ChatResponse {
+            id: response.id,
+            object: response.object,
+            created: response.created,
+            model: response.model,
+            choices,
+            usage,
+            system_fingerprint: response.system_fingerprint,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::provider::Provider for OpenaiCompatibleProvider {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    async fn chat(&self, request: crate::provider::types::ChatRequest) -> anyhow::Result<crate::provider::types::ChatResponse> {
+        // Convert unified request to OpenAI-compatible request
+        let _openai_request = self.convert_chat_request(request);
+        
+        // TODO: Implement actual API call
+        // For now, return a mock response
+        Ok(crate::provider::types::ChatResponse {
+            id: "mock-id".to_string(),
+            object: "chat.completion".to_string(),
+            created: 1234567890,
+            model: self.model.clone(),
+            choices: vec![crate::provider::types::ChatChoice {
+                index: 0,
+                message: crate::provider::types::ChatMessage {
+                    role: crate::provider::types::Role::Assistant,
+                    content: Some("This is a mock response. Actual API call not implemented yet.".to_string()),
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                },
+                finish_reason: crate::provider::types::FinishReason::Stop,
+                logprobs: None,
+            }],
+            usage: Some(crate::provider::types::Usage {
+                prompt_tokens: 10,
+                completion_tokens: 20,
+                total_tokens: 30,
+            }),
+            system_fingerprint: None,
+        })
+    }
+
+    async fn embedding(&self, request: crate::provider::types::EmbeddingRequest) -> anyhow::Result<crate::provider::types::EmbeddingResponse> {
+        // TODO: Implement actual API call
+        // For now, return a mock response
+        Ok(crate::provider::types::EmbeddingResponse {
+            data: vec![crate::provider::types::EmbeddingObject {
+                index: 0,
+                embedding: vec![0.1; 1536], // Mock embedding vector
+                object: "embedding".to_string(),
+            }],
+            model: self.model.clone(),
+            object: "list".to_string(),
+            usage: crate::provider::types::EmbeddingUsage {
+                prompt_tokens: request.input.len() as u32 * 10,
+                total_tokens: request.input.len() as u32 * 10,
+            },
+        })
+    }
+
+    fn capabilities(&self) -> crate::provider::types::ModelCapabilities {
+        // Determine capabilities based on model name
+        let model_lower = self.model.to_lowercase();
+        let mut capabilities = crate::provider::types::ModelCapabilities::TEXT_GENERATION;
+        
+        if model_lower.contains("gpt-4") || model_lower.contains("gpt-3.5") {
+            capabilities |= crate::provider::types::ModelCapabilities::FUNCTION_CALLING;
+        }
+        
+        if model_lower.contains("vision") || model_lower.contains("gpt-4-vision") {
+            capabilities |= crate::provider::types::ModelCapabilities::VISION;
+        }
+        
+        if model_lower.contains("whisper") || model_lower.contains("audio") {
+            capabilities |= crate::provider::types::ModelCapabilities::AUDIO_INPUT;
+        }
+        
+        if model_lower.contains("json") {
+            capabilities |= crate::provider::types::ModelCapabilities::OBJECT_GENERATION;
+        }
+        
+        capabilities
+    }
+
+    fn max_context_length(&self) -> usize {
+        // Return context length based on model
+        let model_lower = self.model.to_lowercase();
+        
+        if model_lower.contains("gpt-4") {
+            if model_lower.contains("32k") {
+                32768
+            } else if model_lower.contains("128k") {
+                131072
+            } else {
+                8192
+            }
+        } else if model_lower.contains("gpt-3.5") {
+            if model_lower.contains("16k") {
+                16384
+            } else {
+                4096
+            }
+        } else if model_lower.contains("claude") {
+            if model_lower.contains("100k") {
+                100000
+            } else if model_lower.contains("200k") {
+                200000
+            } else {
+                100000
+            }
+        } else {
+            // Default context length
+            4096
+        }
+    }
 }

@@ -12,64 +12,27 @@ pub mod openrouter;
 pub mod types;
 
 pub use self::types::*;
-use crate::provider::compatible::OpenaiCompatibleProvider;
-use anyhow::Context;
-use std::env;
+use anyhow::{Context, Result};
+use futures::Stream;
 
 #[async_trait::async_trait]
-pub trait Provider {
+pub trait Provider: Send + Sync {
+    /// Returns the unique identifier/name of the provider (e.g., "openai", "openrouter").
     fn name(&self) -> &str;
 
-    fn max_context_length(&self) -> usize;
-}
+    /// Sends a chat completion request and returns the full response.
+    /// Used for non-streaming interactions.
+    async fn chat(&self, request: impl Into<ChatRequest>) -> Result<ChatResponse>;
 
-pub fn create_openai_compatible(
-    name: impl Into<String>,
-    api_key: impl Into<String>,
-    model: impl Into<String>,
-) -> anyhow::Result<OpenaiCompatibleProvider> {
-    let name = name.into();
-    let mut api_key = api_key.into();
-    match name.as_str() {
-        "deepseek" => {
-            if api_key.is_empty() {
-                api_key = env::var("DEEPSEEK_API_KEY")
-                    .context("DEEPSEEK_API_KEY env var is not set")?
-                    .into();
-            }
-            Ok(OpenaiCompatibleProvider::new(
-                name,
-                model.into(),
-                "https://api.deepseek.com/",
-                api_key,
-            ))
-        }
-        "openai" => {
-            if api_key.is_empty() {
-                api_key = env::var("OPENAI_API_KEY")
-                    .context("OPENAI_API_KEY env var is not set")?
-                    .into();
-            }
-            Ok(OpenaiCompatibleProvider::new(
-                name,
-                model.into(),
-                "https://api.openai.com/v1",
-                api_key,
-            ))
-        }
-        "openrouter" => {
-            if api_key.is_empty() {
-                api_key = env::var("OPENROUTER_API_KEY")
-                    .context("OPENROUTER_API_KEY env var is not set")?
-                    .into();
-            }
-            Ok(OpenaiCompatibleProvider::new(
-                name,
-                model.into(),
-                "https://openrouter.ai/api/v1",
-                api_key,
-            ))
-        }
-        _ => anyhow::bail!("Unsupported provider name: {}", name),
-    }
+    /// Generates embeddings for the given input text.
+    /// Essential for RAG (Retrieval-Augmented Generation) features.
+    async fn embedding(&self, request: impl Into<EmbeddingRequest>) -> Result<EmbeddingResponse>;
+
+    /// Returns the capabilities of the currently configured model (e.g., vision, function calling).
+    /// This helps the client know what features are available without try-and-error.
+    fn capabilities(&self) -> ModelCapabilities;
+
+    /// Returns the maximum context length (in tokens) for the currently configured model.
+    /// Used for context window management to avoid overflow errors.
+    fn max_context_length(&self) -> usize;
 }
