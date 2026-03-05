@@ -1067,8 +1067,8 @@ impl From<CreateChatCompletionResponse> for crate::provider::types::ChatResponse
                 }
             };
             
-            // Convert finish reason
-            let finish_reason = match choice.finish_reason.as_str() {
+            // Convert finish reason (currently unused, but kept for future use)
+            let _finish_reason = match choice.finish_reason.as_str() {
                 "stop" => crate::provider::types::FinishReason::Stop,
                 "length" => crate::provider::types::FinishReason::Length,
                 "tool_calls" => crate::provider::types::FinishReason::ToolCalls,

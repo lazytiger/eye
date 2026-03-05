@@ -793,8 +793,8 @@ impl From<ChatResponse> for crate::provider::types::ChatResponse {
                 }
             };
             
-            // Convert finish reason
-            let finish_reason = choice.finish_reason.map(|r| match r.as_str() {
+            // Convert finish reason (currently unused, but kept for future use)
+            let _finish_reason = choice.finish_reason.map(|r| match r.as_str() {
                 "stop" => crate::provider::types::FinishReason::Stop,
                 "length" => crate::provider::types::FinishReason::Length,
                 "tool_calls" => crate::provider::types::FinishReason::ToolCalls,
