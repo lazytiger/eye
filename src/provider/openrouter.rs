@@ -466,6 +466,173 @@ impl From<crate::provider::types::EmbeddingRequest> for EmbeddingsRequest {
     }
 }
 
+// ==========================================
+// OpenRouter Provider Implementation
+// ==========================================
+
+/// OpenRouter provider struct
+pub struct OpenrouterProvider {
+    /// API key for OpenRouter
+    api_key: String,
+    /// Model name (e.g., "openai/gpt-4", "anthropic/claude-3-opus")
+    model: String,
+    /// Base URL for OpenRouter API (default: "https://openrouter.ai/api/v1")
+    base_url: String,
+}
+
+impl OpenrouterProvider {
+    /// Create a new OpenRouter provider
+    pub fn new(api_key: String, model: String) -> Self {
+        Self {
+            api_key,
+            model,
+            base_url: "https://openrouter.ai/api/v1".to_string(),
+        }
+    }
+    
+    /// Create a new OpenRouter provider with custom base URL
+    pub fn new_with_base_url(api_key: String, model: String, base_url: String) -> Self {
+        Self {
+            api_key,
+            model,
+            base_url,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::provider::Provider for OpenrouterProvider {
+    fn name(&self) -> &str {
+        "openrouter"
+    }
+
+    async fn chat(
+        &self,
+        request: crate::provider::types::ChatRequest,
+    ) -> anyhow::Result<crate::provider::types::ChatResponse> {
+        // Convert unified request to OpenRouter request
+        let _openrouter_request: ChatRequest = request.into();
+        
+        // TODO: Implement actual OpenRouter API call
+        // For now, return a mock response
+        Ok(crate::provider::types::ChatResponse {
+            id: "mock-openrouter-id".to_string(),
+            object: "chat.completion".to_string(),
+            created: 1234567890,
+            model: self.model.clone(),
+            choices: vec![crate::provider::types::ChatChoice {
+                index: 0,
+                message: crate::provider::types::ChatMessage {
+                    role: crate::provider::types::Role::Assistant,
+                    content: Some(crate::provider::types::Content::Text(
+                        "This is a mock OpenRouter response. Actual API call not implemented yet.".to_string(),
+                    )),
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                },
+                finish_reason: crate::provider::types::FinishReason::Stop,
+                logprobs: None,
+            }],
+            usage: Some(crate::provider::types::Usage {
+                prompt_tokens: 10,
+                completion_tokens: 20,
+                total_tokens: 30,
+            }),
+            system_fingerprint: None,
+        })
+    }
+
+    async fn embedding(
+        &self,
+        request: crate::provider::types::EmbeddingRequest,
+    ) -> anyhow::Result<crate::provider::types::EmbeddingResponse> {
+        // Convert unified request to OpenRouter request
+        let _openrouter_request: EmbeddingsRequest = request.clone().into();
+        
+        // TODO: Implement actual OpenRouter API call
+        // For now, return a mock response
+        Ok(crate::provider::types::EmbeddingResponse {
+            data: vec![crate::provider::types::EmbeddingObject {
+                index: 0,
+                embedding: vec![0.1; 1536], // Mock embedding vector
+                object: "embedding".to_string(),
+            }],
+            model: self.model.clone(),
+            object: "list".to_string(),
+            usage: crate::provider::types::EmbeddingUsage {
+                prompt_tokens: request.input.len() as u32 * 10,
+                total_tokens: request.input.len() as u32 * 10,
+            },
+        })
+    }
+
+    fn capabilities(&self) -> crate::provider::types::ModelCapabilities {
+        // OpenRouter supports many models with different capabilities
+        // For now, assume basic text generation and function calling
+        let model_lower = self.model.to_lowercase();
+        let mut capabilities = crate::provider::types::ModelCapabilities::TEXT_GENERATION;
+
+        // Most models on OpenRouter support function calling
+        if model_lower.contains("gpt") || model_lower.contains("claude") || model_lower.contains("gemini") {
+            capabilities |= crate::provider::types::ModelCapabilities::FUNCTION_CALLING;
+        }
+
+        // Check for vision capabilities
+        if model_lower.contains("vision") || model_lower.contains("gpt-4-vision") || model_lower.contains("claude-3") {
+            capabilities |= crate::provider::types::ModelCapabilities::VISION;
+        }
+
+        // Check for audio capabilities
+        if model_lower.contains("whisper") || model_lower.contains("audio") {
+            capabilities |= crate::provider::types::ModelCapabilities::AUDIO_INPUT;
+        }
+
+        // Check for JSON/object generation
+        if model_lower.contains("json") {
+            capabilities |= crate::provider::types::ModelCapabilities::OBJECT_GENERATION;
+        }
+
+        capabilities
+    }
+
+    fn max_context_length(&self) -> usize {
+        // Return context length based on model
+        let model_lower = self.model.to_lowercase();
+
+        if model_lower.contains("gpt-4") {
+            if model_lower.contains("32k") {
+                32768
+            } else if model_lower.contains("128k") {
+                131072
+            } else {
+                8192
+            }
+        } else if model_lower.contains("claude-3") {
+            if model_lower.contains("200k") {
+                200000
+            } else {
+                100000
+            }
+        } else if model_lower.contains("gemini") {
+            if model_lower.contains("1.5") {
+                1000000  // Gemini 1.5 has 1M context
+            } else {
+                32768
+            }
+        } else if model_lower.contains("gpt-3.5") {
+            if model_lower.contains("16k") {
+                16384
+            } else {
+                4096
+            }
+        } else {
+            // Default context length
+            4096
+        }
+    }
+}
+
 impl From<crate::provider::types::ChatRequest> for ChatRequest {
     fn from(req: crate::provider::types::ChatRequest) -> Self {
         // Convert messages

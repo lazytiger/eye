@@ -167,7 +167,7 @@ pub struct StreamOptions {
 
 /// Create chat completion request
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ChatCompletionRequest {
+struct ChatCompletionRequest {
     /// A list of messages comprising the conversation so far
     pub messages: Vec<ChatMessage>,
     /// Model ID used to generate the response
@@ -324,95 +324,76 @@ pub struct ChatCompletionResponse {
     pub system_fingerprint: Option<String>,
 }
 
-/// OpenAI-compatible provider
-pub struct OpenaiCompatibleProvider {
-    name: String,
-    model: String,
-    endpoint: String,
-    api_key: String,
-}
-
-impl OpenaiCompatibleProvider {
-    /// Create a new OpenAI-compatible provider
-    pub fn new(
-        name: impl Into<String>,
-        model: impl Into<String>,
-        endpoint: impl Into<String>,
-        api_key: impl Into<String>,
-    ) -> Self {
-        Self {
-            name: name.into(),
-            model: model.into(),
-            endpoint: endpoint.into(),
-            api_key: api_key.into(),
-        }
-    }
-
-    /// Helper method to convert unified ChatRequest to OpenAI-compatible request
-    fn convert_chat_request(&self, request: crate::provider::types::ChatRequest) -> ChatCompletionRequest {
-        // Convert messages
-        let messages = request.messages.into_iter().map(|msg| {
-            // Convert content
-            let content = match msg.content {
-                Some(crate::provider::types::Content::Text(text)) => Some(text),
-                Some(crate::provider::types::Content::Parts(parts)) => {
-                    // For now, extract text content from parts
-                    // TODO: Support multimodal content in OpenAI-compatible format
-                    let mut text_parts = Vec::new();
-                    for part in parts {
-                        match part {
-                            crate::provider::types::ContentPart::Text { text } => {
-                                text_parts.push(text);
-                            }
-                            crate::provider::types::ContentPart::ImageUrl { image_url } => {
-                                text_parts.push(format!("[Image: {}]", image_url.url));
-                            }
-                            crate::provider::types::ContentPart::AudioUrl { audio_url } => {
-                                text_parts.push(format!("[Audio: {}]", audio_url.url));
-                            }
-                            crate::provider::types::ContentPart::VideoUrl { video_url } => {
-                                text_parts.push(format!("[Video: {}]", video_url.url));
+impl From<crate::provider::types::ChatRequest> for ChatCompletionRequest {
+    fn from(request: crate::provider::types::ChatRequest) -> Self {
+        let messages = request
+            .messages
+            .into_iter()
+            .map(|msg| {
+                // Convert content
+                let content = match msg.content {
+                    Some(crate::provider::types::Content::Text(text)) => Some(text),
+                    Some(crate::provider::types::Content::Parts(parts)) => {
+                        // For now, extract text content from parts
+                        // TODO: Support multimodal content in OpenAI-compatible format
+                        let mut text_parts = Vec::new();
+                        for part in parts {
+                            match part {
+                                crate::provider::types::ContentPart::Text { text } => {
+                                    text_parts.push(text);
+                                }
+                                crate::provider::types::ContentPart::ImageUrl { image_url } => {
+                                    text_parts.push(format!("[Image: {}]", image_url.url));
+                                }
+                                crate::provider::types::ContentPart::AudioUrl { audio_url } => {
+                                    text_parts.push(format!("[Audio: {}]", audio_url.url));
+                                }
+                                crate::provider::types::ContentPart::VideoUrl { video_url } => {
+                                    text_parts.push(format!("[Video: {}]", video_url.url));
+                                }
                             }
                         }
+                        if !text_parts.is_empty() {
+                            Some(text_parts.join("\n"))
+                        } else {
+                            None
+                        }
                     }
-                    if !text_parts.is_empty() {
-                        Some(text_parts.join("\n"))
-                    } else {
-                        None
-                    }
+                    None => None,
+                };
+
+                ChatMessage {
+                    role: match msg.role {
+                        crate::provider::types::Role::System => Role::System,
+                        crate::provider::types::Role::User => Role::User,
+                        crate::provider::types::Role::Assistant => Role::Assistant,
+                        crate::provider::types::Role::Tool => Role::Tool,
+                    },
+                    content,
+                    name: msg.name,
+                    tool_calls: msg.tool_calls.map(|calls| {
+                        calls
+                            .into_iter()
+                            .map(|call| ToolCall {
+                                id: call.id,
+                                tool_type: call.tool_type,
+                                function: ToolCallFunction {
+                                    name: call.function.name,
+                                    arguments: call.function.arguments,
+                                },
+                            })
+                            .collect()
+                    }),
+                    tool_call_id: msg.tool_call_id,
                 }
-                None => None,
-            };
-
-            ChatMessage {
-                role: match msg.role {
-                    crate::provider::types::Role::System => Role::System,
-                    crate::provider::types::Role::User => Role::User,
-                    crate::provider::types::Role::Assistant => Role::Assistant,
-                    crate::provider::types::Role::Tool => Role::Tool,
-                },
-                content,
-                name: msg.name,
-                tool_calls: msg.tool_calls.map(|calls| {
-                    calls.into_iter().map(|call| {
-                        ToolCall {
-                            id: call.id,
-                            tool_type: call.tool_type,
-                            function: ToolCallFunction {
-                                name: call.function.name,
-                                arguments: call.function.arguments,
-                            },
-                        }
-                    }).collect()
-                }),
-                tool_call_id: msg.tool_call_id,
-            }
-        }).collect();
+            })
+            .collect();
 
         // Convert tools
         let tools = request.tools.map(|tools| {
-            tools.into_iter().map(|tool| {
-                Tool {
+            tools
+                .into_iter()
+                .map(|tool| Tool {
                     tool_type: tool.tool_type,
                     function: FunctionDefinition {
                         name: tool.function.name,
@@ -420,33 +401,37 @@ impl OpenaiCompatibleProvider {
                         parameters: tool.function.parameters,
                         strict: tool.function.strict,
                     },
-                }
-            }).collect()
+                })
+                .collect()
         });
 
         // Convert tool choice
         let tool_choice = request.tool_choice.map(|choice| match choice {
             crate::provider::types::ToolChoice::String(s) => ToolChoice::String(s),
-            crate::provider::types::ToolChoice::Object(obj) => ToolChoice::Object(NamedToolChoice {
-                tool_type: obj.tool_type,
-                function: NamedToolChoiceFunction {
-                    name: obj.function.name,
-                },
-            }),
+            crate::provider::types::ToolChoice::Object(obj) => {
+                ToolChoice::Object(NamedToolChoice {
+                    tool_type: obj.tool_type,
+                    function: NamedToolChoiceFunction {
+                        name: obj.function.name,
+                    },
+                })
+            }
         });
 
         // Convert response format
         let response_format = request.response_format.map(|format| match format {
             crate::provider::types::ResponseFormat::Text => ResponseFormat::Text,
             crate::provider::types::ResponseFormat::JsonObject => ResponseFormat::JsonObject,
-            crate::provider::types::ResponseFormat::JsonSchema { json_schema } => ResponseFormat::JsonSchema {
-                json_schema: JsonSchemaFormat {
-                    name: json_schema.name,
-                    description: json_schema.description,
-                    schema: json_schema.schema,
-                    strict: json_schema.strict,
-                },
-            },
+            crate::provider::types::ResponseFormat::JsonSchema { json_schema } => {
+                ResponseFormat::JsonSchema {
+                    json_schema: JsonSchemaFormat {
+                        name: json_schema.name,
+                        description: json_schema.description,
+                        schema: json_schema.schema,
+                        strict: json_schema.strict,
+                    },
+                }
+            }
         });
 
         // Convert stop
@@ -483,72 +468,85 @@ impl OpenaiCompatibleProvider {
             stream_options,
         }
     }
+}
 
-    /// Helper method to convert OpenAI-compatible response to unified ChatResponse
-    fn convert_chat_response(&self, response: ChatCompletionResponse) -> crate::provider::types::ChatResponse {
+impl From<ChatCompletionResponse> for crate::provider::types::ChatResponse {
+    fn from(response: ChatCompletionResponse) -> Self {
         // Convert choices
-        let choices = response.choices.into_iter().map(|choice| {
-            // Convert content
-            let content = choice.message.content.map(|text| {
-                crate::provider::types::Content::Text(text)
-            });
+        let choices = response
+            .choices
+            .into_iter()
+            .map(|choice| {
+                // Convert content
+                let content = choice
+                    .message
+                    .content
+                    .map(|text| crate::provider::types::Content::Text(text));
 
-            crate::provider::types::ChatChoice {
-                index: choice.index,
-                message: crate::provider::types::ChatMessage {
-                    role: match choice.message.role {
-                        Role::System => crate::provider::types::Role::System,
-                        Role::User => crate::provider::types::Role::User,
-                        Role::Assistant => crate::provider::types::Role::Assistant,
-                        Role::Tool => crate::provider::types::Role::Tool,
-                    },
-                    content,
-                    name: choice.message.name,
-                    tool_calls: choice.message.tool_calls.map(|calls| {
-                        calls.into_iter().map(|call| {
-                            crate::provider::types::ToolCall {
-                                id: call.id,
-                                tool_type: call.tool_type,
-                                function: crate::provider::types::ToolCallFunction {
-                                    name: call.function.name,
-                                    arguments: call.function.arguments,
-                                },
-                            }
-                        }).collect()
-                    }),
-                    tool_call_id: choice.message.tool_call_id,
-                },
-                finish_reason: match choice.finish_reason {
-                    FinishReason::Stop => crate::provider::types::FinishReason::Stop,
-                    FinishReason::Length => crate::provider::types::FinishReason::Length,
-                    FinishReason::ToolCalls => crate::provider::types::FinishReason::ToolCalls,
-                    FinishReason::ContentFilter => crate::provider::types::FinishReason::ContentFilter,
-                    FinishReason::FunctionCall => crate::provider::types::FinishReason::FunctionCall,
-                },
-                logprobs: choice.logprobs.map(|logprobs| {
-                    crate::provider::types::Logprobs {
-                        content: logprobs.content.map(|content| {
-                            content.into_iter().map(|item| {
-                                crate::provider::types::LogprobContent {
-                                    token: item.token,
-                                    logprob: item.logprob,
-                                    bytes: item.bytes,
-                                    top_logprobs: item.top_logprobs.map(|top_logprobs| {
-                                        top_logprobs.into_iter().map(|top| {
-                                            crate::provider::types::TopLogprob {
-                                                token: top.token,
-                                                logprob: top.logprob,
-                                                bytes: top.bytes,
-                                            }
-                                        }).collect()
-                                    }),
-                                }
-                            }).collect()
+                crate::provider::types::ChatChoice {
+                    index: choice.index,
+                    message: crate::provider::types::ChatMessage {
+                        role: match choice.message.role {
+                            Role::System => crate::provider::types::Role::System,
+                            Role::User => crate::provider::types::Role::User,
+                            Role::Assistant => crate::provider::types::Role::Assistant,
+                            Role::Tool => crate::provider::types::Role::Tool,
+                        },
+                        content,
+                        name: choice.message.name,
+                        tool_calls: choice.message.tool_calls.map(|calls| {
+                            calls
+                                .into_iter()
+                                .map(|call| crate::provider::types::ToolCall {
+                                    id: call.id,
+                                    tool_type: call.tool_type,
+                                    function: crate::provider::types::ToolCallFunction {
+                                        name: call.function.name,
+                                        arguments: call.function.arguments,
+                                    },
+                                })
+                                .collect()
                         }),
-                    }
-                }),
-            }
-        }).collect();
+                        tool_call_id: choice.message.tool_call_id,
+                    },
+                    finish_reason: match choice.finish_reason {
+                        FinishReason::Stop => crate::provider::types::FinishReason::Stop,
+                        FinishReason::Length => crate::provider::types::FinishReason::Length,
+                        FinishReason::ToolCalls => crate::provider::types::FinishReason::ToolCalls,
+                        FinishReason::ContentFilter => {
+                            crate::provider::types::FinishReason::ContentFilter
+                        }
+                        FinishReason::FunctionCall => {
+                            crate::provider::types::FinishReason::FunctionCall
+                        }
+                    },
+                    logprobs: choice
+                        .logprobs
+                        .map(|logprobs| crate::provider::types::Logprobs {
+                            content: logprobs.content.map(|content| {
+                                content
+                                    .into_iter()
+                                    .map(|item| crate::provider::types::LogprobContent {
+                                        token: item.token,
+                                        logprob: item.logprob,
+                                        bytes: item.bytes,
+                                        top_logprobs: item.top_logprobs.map(|top_logprobs| {
+                                            top_logprobs
+                                                .into_iter()
+                                                .map(|top| crate::provider::types::TopLogprob {
+                                                    token: top.token,
+                                                    logprob: top.logprob,
+                                                    bytes: top.bytes,
+                                                })
+                                                .collect()
+                                        }),
+                                    })
+                                    .collect()
+                            }),
+                        }),
+                }
+            })
+            .collect();
 
         // Convert usage
         let usage = response.usage.map(|usage| crate::provider::types::Usage {
@@ -569,26 +567,29 @@ impl OpenaiCompatibleProvider {
     }
 }
 
-/// Create an OpenAI-compatible provider with default endpoint
-pub fn create_openai_compatible(
-    name: impl Into<String>,
-    api_key: impl Into<String>,
-    model: impl Into<String>,
-) -> anyhow::Result<OpenaiCompatibleProvider> {
-    let name_str = name.into();
-    let endpoint = match name_str.as_str() {
-        "openai" => "https://api.openai.com/v1".to_string(),
-        "openrouter" => "https://openrouter.ai/api/v1".to_string(),
-        "deepseek" => "https://api.deepseek.com".to_string(),
-        _ => return Err(anyhow::anyhow!("Unknown provider: {}", name_str)),
-    };
-    
-    Ok(OpenaiCompatibleProvider::new(
-        name_str,
-        model.into(),
-        endpoint,
-        api_key.into(),
-    ))
+/// OpenAI-compatible provider
+pub struct OpenaiCompatibleProvider {
+    name: String,
+    model: String,
+    endpoint: String,
+    api_key: String,
+}
+
+impl OpenaiCompatibleProvider {
+    /// Create a new OpenAI-compatible provider
+    pub fn new(
+        name: impl Into<String>,
+        model: impl Into<String>,
+        endpoint: impl Into<String>,
+        api_key: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            model: model.into(),
+            endpoint: endpoint.into(),
+            api_key: api_key.into(),
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -597,10 +598,13 @@ impl crate::provider::Provider for OpenaiCompatibleProvider {
         &self.name
     }
 
-    async fn chat(&self, request: crate::provider::types::ChatRequest) -> anyhow::Result<crate::provider::types::ChatResponse> {
+    async fn chat(
+        &self,
+        request: crate::provider::types::ChatRequest,
+    ) -> anyhow::Result<crate::provider::types::ChatResponse> {
         // Convert unified request to OpenAI-compatible request
-        let _openai_request = self.convert_chat_request(request.into());
-        
+        let _request: ChatCompletionRequest = request.into();
+
         // TODO: Implement actual API call
         // For now, return a mock response
         Ok(crate::provider::types::ChatResponse {
@@ -612,7 +616,9 @@ impl crate::provider::Provider for OpenaiCompatibleProvider {
                 index: 0,
                 message: crate::provider::types::ChatMessage {
                     role: crate::provider::types::Role::Assistant,
-                    content: Some(crate::provider::types::Content::Text("This is a mock response. Actual API call not implemented yet.".to_string())),
+                    content: Some(crate::provider::types::Content::Text(
+                        "This is a mock response. Actual API call not implemented yet.".to_string(),
+                    )),
                     name: None,
                     tool_calls: None,
                     tool_call_id: None,
@@ -629,7 +635,10 @@ impl crate::provider::Provider for OpenaiCompatibleProvider {
         })
     }
 
-    async fn embedding(&self, request: crate::provider::types::EmbeddingRequest) -> anyhow::Result<crate::provider::types::EmbeddingResponse> {
+    async fn embedding(
+        &self,
+        request: crate::provider::types::EmbeddingRequest,
+    ) -> anyhow::Result<crate::provider::types::EmbeddingResponse> {
         // TODO: Implement actual API call
         // For now, return a mock response
         Ok(crate::provider::types::EmbeddingResponse {
@@ -651,30 +660,30 @@ impl crate::provider::Provider for OpenaiCompatibleProvider {
         // Determine capabilities based on model name
         let model_lower = self.model.to_lowercase();
         let mut capabilities = crate::provider::types::ModelCapabilities::TEXT_GENERATION;
-        
+
         if model_lower.contains("gpt-4") || model_lower.contains("gpt-3.5") {
             capabilities |= crate::provider::types::ModelCapabilities::FUNCTION_CALLING;
         }
-        
+
         if model_lower.contains("vision") || model_lower.contains("gpt-4-vision") {
             capabilities |= crate::provider::types::ModelCapabilities::VISION;
         }
-        
+
         if model_lower.contains("whisper") || model_lower.contains("audio") {
             capabilities |= crate::provider::types::ModelCapabilities::AUDIO_INPUT;
         }
-        
+
         if model_lower.contains("json") {
             capabilities |= crate::provider::types::ModelCapabilities::OBJECT_GENERATION;
         }
-        
+
         capabilities
     }
 
     fn max_context_length(&self) -> usize {
         // Return context length based on model
         let model_lower = self.model.to_lowercase();
-        
+
         if model_lower.contains("gpt-4") {
             if model_lower.contains("32k") {
                 32768

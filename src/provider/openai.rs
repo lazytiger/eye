@@ -4,6 +4,160 @@
 //! based on the OpenAPI specification.
 
 use serde::{Deserialize, Serialize};
+
+
+
+// ==========================================
+// OpenAI Provider Implementation
+// ==========================================
+
+/// OpenAI provider struct
+pub struct OpenaiProvider {
+    /// API key for OpenAI
+    api_key: String,
+    /// Model name (e.g., "gpt-4", "gpt-3.5-turbo")
+    model: String,
+    /// Base URL for OpenAI API (default: "https://api.openai.com/v1")
+    base_url: String,
+}
+
+impl OpenaiProvider {
+    /// Create a new OpenAI provider
+    pub fn new(api_key: String, model: String) -> Self {
+        Self {
+            api_key,
+            model,
+            base_url: "https://api.openai.com/v1".to_string(),
+        }
+    }
+    
+    /// Create a new OpenAI provider with custom base URL
+    pub fn new_with_base_url(api_key: String, model: String, base_url: String) -> Self {
+        Self {
+            api_key,
+            model,
+            base_url,
+        }
+    }
+}
+
+
+
+#[async_trait::async_trait]
+impl crate::provider::Provider for OpenaiProvider {
+    fn name(&self) -> &str {
+        "openai"
+    }
+
+    async fn chat(
+        &self,
+        request: crate::provider::types::ChatRequest,
+    ) -> anyhow::Result<crate::provider::types::ChatResponse> {
+        // Convert unified request to OpenAI request
+        let _openai_request: CreateChatCompletionRequest = request.into();
+        
+        // TODO: Implement actual OpenAI API call
+        // For now, return a mock response
+        Ok(crate::provider::types::ChatResponse {
+            id: "mock-openai-id".to_string(),
+            object: "chat.completion".to_string(),
+            created: 1234567890,
+            model: self.model.clone(),
+            choices: vec![crate::provider::types::ChatChoice {
+                index: 0,
+                message: crate::provider::types::ChatMessage {
+                    role: crate::provider::types::Role::Assistant,
+                    content: Some(crate::provider::types::Content::Text(
+                        "This is a mock OpenAI response. Actual API call not implemented yet.".to_string(),
+                    )),
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                },
+                finish_reason: crate::provider::types::FinishReason::Stop,
+                logprobs: None,
+            }],
+            usage: Some(crate::provider::types::Usage {
+                prompt_tokens: 10,
+                completion_tokens: 20,
+                total_tokens: 30,
+            }),
+            system_fingerprint: None,
+        })
+    }
+
+    async fn embedding(
+        &self,
+        request: crate::provider::types::EmbeddingRequest,
+    ) -> anyhow::Result<crate::provider::types::EmbeddingResponse> {
+        // Convert unified request to OpenAI request
+        let _openai_request: CreateEmbeddingRequest = request.clone().into();
+        
+        // TODO: Implement actual OpenAI API call
+        // For now, return a mock response
+        Ok(crate::provider::types::EmbeddingResponse {
+            data: vec![crate::provider::types::EmbeddingObject {
+                index: 0,
+                embedding: vec![0.1; 1536], // Mock embedding vector
+                object: "embedding".to_string(),
+            }],
+            model: self.model.clone(),
+            object: "list".to_string(),
+            usage: crate::provider::types::EmbeddingUsage {
+                prompt_tokens: request.input.len() as u32 * 10,
+                total_tokens: request.input.len() as u32 * 10,
+            },
+        })
+    }
+
+    fn capabilities(&self) -> crate::provider::types::ModelCapabilities {
+        // Determine capabilities based on model name
+        let model_lower = self.model.to_lowercase();
+        let mut capabilities = crate::provider::types::ModelCapabilities::TEXT_GENERATION;
+
+        if model_lower.contains("gpt-4") || model_lower.contains("gpt-3.5") {
+            capabilities |= crate::provider::types::ModelCapabilities::FUNCTION_CALLING;
+        }
+
+        if model_lower.contains("vision") || model_lower.contains("gpt-4-vision") {
+            capabilities |= crate::provider::types::ModelCapabilities::VISION;
+        }
+
+        if model_lower.contains("whisper") || model_lower.contains("audio") {
+            capabilities |= crate::provider::types::ModelCapabilities::AUDIO_INPUT;
+        }
+
+        if model_lower.contains("json") {
+            capabilities |= crate::provider::types::ModelCapabilities::OBJECT_GENERATION;
+        }
+
+        capabilities
+    }
+
+    fn max_context_length(&self) -> usize {
+        // Return context length based on model
+        let model_lower = self.model.to_lowercase();
+
+        if model_lower.contains("gpt-4") {
+            if model_lower.contains("32k") {
+                32768
+            } else if model_lower.contains("128k") {
+                131072
+            } else {
+                8192
+            }
+        } else if model_lower.contains("gpt-3.5") {
+            if model_lower.contains("16k") {
+                16384
+            } else {
+                4096
+            }
+        } else {
+            // Default context length
+            4096
+        }
+    }
+}
 use std::collections::HashMap;
 
 /// Chat completion request message

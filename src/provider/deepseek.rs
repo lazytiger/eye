@@ -461,6 +461,118 @@ impl From<crate::provider::types::ChatRequest> for DeepSeekRequest {
     }
 }
 
+// ==========================================
+// DeepSeek Provider Implementation
+// ==========================================
+
+/// DeepSeek provider struct
+pub struct DeepseekProvider {
+    /// API key for DeepSeek
+    api_key: String,
+    /// Model name (e.g., "deepseek-chat", "deepseek-reasoner")
+    model: String,
+    /// Base URL for DeepSeek API (default: "https://api.deepseek.com")
+    base_url: String,
+}
+
+impl DeepseekProvider {
+    /// Create a new DeepSeek provider
+    pub fn new(api_key: String, model: String) -> Self {
+        Self {
+            api_key,
+            model,
+            base_url: "https://api.deepseek.com".to_string(),
+        }
+    }
+    
+    /// Create a new DeepSeek provider with custom base URL
+    pub fn new_with_base_url(api_key: String, model: String, base_url: String) -> Self {
+        Self {
+            api_key,
+            model,
+            base_url,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::provider::Provider for DeepseekProvider {
+    fn name(&self) -> &str {
+        "deepseek"
+    }
+
+    async fn chat(
+        &self,
+        request: crate::provider::types::ChatRequest,
+    ) -> anyhow::Result<crate::provider::types::ChatResponse> {
+        // Convert unified request to DeepSeek request
+        let _deepseek_request: DeepSeekRequest = request.into();
+        
+        // TODO: Implement actual DeepSeek API call
+        // For now, return a mock response
+        Ok(crate::provider::types::ChatResponse {
+            id: "mock-deepseek-id".to_string(),
+            object: "chat.completion".to_string(),
+            created: 1234567890,
+            model: self.model.clone(),
+            choices: vec![crate::provider::types::ChatChoice {
+                index: 0,
+                message: crate::provider::types::ChatMessage {
+                    role: crate::provider::types::Role::Assistant,
+                    content: Some(crate::provider::types::Content::Text(
+                        "This is a mock DeepSeek response. Actual API call not implemented yet.".to_string(),
+                    )),
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                },
+                finish_reason: crate::provider::types::FinishReason::Stop,
+                logprobs: None,
+            }],
+            usage: Some(crate::provider::types::Usage {
+                prompt_tokens: 10,
+                completion_tokens: 20,
+                total_tokens: 30,
+            }),
+            system_fingerprint: None,
+        })
+    }
+
+    async fn embedding(
+        &self,
+        _request: crate::provider::types::EmbeddingRequest,
+    ) -> anyhow::Result<crate::provider::types::EmbeddingResponse> {
+        // DeepSeek doesn't support embeddings API
+        // Return an error or mock response
+        Err(anyhow::anyhow!("DeepSeek does not support embeddings API"))
+    }
+
+    fn capabilities(&self) -> crate::provider::types::ModelCapabilities {
+        // DeepSeek models have specific capabilities
+        let _model_lower = self.model.to_lowercase();
+        let mut capabilities = crate::provider::types::ModelCapabilities::TEXT_GENERATION;
+
+        // DeepSeek models support function calling
+        capabilities |= crate::provider::types::ModelCapabilities::FUNCTION_CALLING;
+
+        // DeepSeek Reasoner has reasoning capabilities
+        // Note: REASONING capability is not defined in ModelCapabilities
+        // if model_lower.contains("reasoner") {
+        //     capabilities |= crate::provider::types::ModelCapabilities::REASONING;
+        // }
+
+        // DeepSeek doesn't support vision, audio, or JSON object generation
+        // (as of the knowledge cutoff date)
+
+        capabilities
+    }
+
+    fn max_context_length(&self) -> usize {
+        // DeepSeek models have 128K context length
+        131072  // 128K tokens
+    }
+}
+
 impl From<DeepSeekResponse> for crate::provider::types::ChatResponse {
     fn from(resp: DeepSeekResponse) -> Self {
         // Convert choices

@@ -13,7 +13,6 @@ pub mod types;
 
 pub use self::types::*;
 use anyhow::{Context, Result};
-pub use compatible::create_openai_compatible;
 use futures::Stream;
 
 #[async_trait::async_trait]
