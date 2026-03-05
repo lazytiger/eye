@@ -1,13 +1,13 @@
+use crate::provider::{call_chat_completions, call_embedding};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-
 // ==========================================
 // /chat/completions
 // ==========================================
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ChatRequest {
+struct ChatRequest {
     pub messages: Vec<Message>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
@@ -255,14 +255,14 @@ pub struct Usage {
 // ==========================================
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct OpenResponsesRequest {
+struct OpenResponsesRequest {
     pub request: ChatRequest,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response: Option<ChatResponse>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct OpenResponsesNonStreamingResponse {
+struct OpenResponsesNonStreamingResponse {
     pub request: ChatRequest,
     pub response: ChatResponse,
 }
@@ -445,16 +445,19 @@ impl From<crate::provider::types::EmbeddingRequest> for EmbeddingsRequest {
             serde_json::Value::String(req.input[0].clone())
         } else {
             serde_json::Value::Array(
-                req.input.into_iter().map(serde_json::Value::String).collect()
+                req.input
+                    .into_iter()
+                    .map(serde_json::Value::String)
+                    .collect(),
             )
         };
-        
+
         // Convert encoding format
         let encoding_format = req.encoding_format.map(|fmt| match fmt {
             crate::provider::types::EmbeddingEncodingFormat::Float => "float".to_string(),
             crate::provider::types::EmbeddingEncodingFormat::Base64 => "base64".to_string(),
         });
-        
+
         EmbeddingsRequest {
             input,
             model: req.model,
@@ -489,7 +492,7 @@ impl OpenrouterProvider {
             base_url: "https://openrouter.ai/api/v1".to_string(),
         }
     }
-    
+
     /// Create a new OpenRouter provider with custom base URL
     pub fn new_with_base_url(api_key: String, model: String, base_url: String) -> Self {
         Self {
@@ -508,63 +511,20 @@ impl crate::provider::Provider for OpenrouterProvider {
 
     async fn chat(
         &self,
-        request: crate::provider::types::ChatRequest,
+        mut request: crate::provider::types::ChatRequest,
     ) -> anyhow::Result<crate::provider::types::ChatResponse> {
-        // Convert unified request to OpenRouter request
-        let _openrouter_request: ChatRequest = request.into();
-        
-        // TODO: Implement actual OpenRouter API call
-        // For now, return a mock response
-        Ok(crate::provider::types::ChatResponse {
-            id: "mock-openrouter-id".to_string(),
-            object: "chat.completion".to_string(),
-            created: 1234567890,
-            model: self.model.clone(),
-            choices: vec![crate::provider::types::ChatChoice {
-                index: 0,
-                message: crate::provider::types::ChatMessage {
-                    role: crate::provider::types::Role::Assistant,
-                    content: Some(crate::provider::types::Content::Text(
-                        "This is a mock OpenRouter response. Actual API call not implemented yet.".to_string(),
-                    )),
-                    name: None,
-                    tool_calls: None,
-                    tool_call_id: None,
-                },
-                finish_reason: crate::provider::types::FinishReason::Stop,
-                logprobs: None,
-            }],
-            usage: Some(crate::provider::types::Usage {
-                prompt_tokens: 10,
-                completion_tokens: 20,
-                total_tokens: 30,
-            }),
-            system_fingerprint: None,
-        })
+        request.model = self.model.clone();
+        let url = format!("{}/chat/completions", self.base_url);
+        call_chat_completions::<ChatRequest, ChatResponse>(&url, &self.api_key, request).await
     }
 
     async fn embedding(
         &self,
-        request: crate::provider::types::EmbeddingRequest,
+        mut request: crate::provider::types::EmbeddingRequest,
     ) -> anyhow::Result<crate::provider::types::EmbeddingResponse> {
-        // Convert unified request to OpenRouter request
-        let _openrouter_request: EmbeddingsRequest = request.clone().into();
-        
-        // TODO: Implement actual OpenRouter API call
-        // For now, return a mock response
-        Ok(crate::provider::types::EmbeddingResponse {
-            data: vec![crate::provider::types::EmbeddingObject {
-                index: 0,
-                embedding: vec![0.1; 1536], // Mock embedding vector
-                object: "embedding".to_string(),
-            }],
-            model: self.model.clone(),
-            object: "list".to_string(),
-            usage: crate::provider::types::EmbeddingUsage {
-                prompt_tokens: request.input.len() as u32 * 10,
-                total_tokens: request.input.len() as u32 * 10,
-            },
-        })
+        request.model = self.model.clone();
+        let url = format!("{}/embeddings", self.base_url);
+        call_embedding::<EmbeddingsRequest, EmbeddingsResponse>(&url, &self.api_key, request).await
     }
 
     fn capabilities(&self) -> crate::provider::types::ModelCapabilities {
@@ -574,12 +534,18 @@ impl crate::provider::Provider for OpenrouterProvider {
         let mut capabilities = crate::provider::types::ModelCapabilities::TEXT_GENERATION;
 
         // Most models on OpenRouter support function calling
-        if model_lower.contains("gpt") || model_lower.contains("claude") || model_lower.contains("gemini") {
+        if model_lower.contains("gpt")
+            || model_lower.contains("claude")
+            || model_lower.contains("gemini")
+        {
             capabilities |= crate::provider::types::ModelCapabilities::FUNCTION_CALLING;
         }
 
         // Check for vision capabilities
-        if model_lower.contains("vision") || model_lower.contains("gpt-4-vision") || model_lower.contains("claude-3") {
+        if model_lower.contains("vision")
+            || model_lower.contains("gpt-4-vision")
+            || model_lower.contains("claude-3")
+        {
             capabilities |= crate::provider::types::ModelCapabilities::VISION;
         }
 
@@ -616,7 +582,7 @@ impl crate::provider::Provider for OpenrouterProvider {
             }
         } else if model_lower.contains("gemini") {
             if model_lower.contains("1.5") {
-                1000000  // Gemini 1.5 has 1M context
+                1000000 // Gemini 1.5 has 1M context
             } else {
                 32768
             }
@@ -679,7 +645,7 @@ impl From<crate::provider::types::ChatRequest> for ChatRequest {
                         }
                         None => MessageContent::Text(String::new()),
                     };
-                    
+
                     Message::System(SystemMessage {
                         content,
                         name: msg.name,
@@ -726,7 +692,7 @@ impl From<crate::provider::types::ChatRequest> for ChatRequest {
                         }
                         None => MessageContent::Text(String::new()),
                     };
-                    
+
                     Message::User(UserMessage {
                         content,
                         name: msg.name,
@@ -758,7 +724,7 @@ impl From<crate::provider::types::ChatRequest> for ChatRequest {
                             }
                         }
                     });
-                    
+
                     // Convert tool calls
                     let tool_calls = msg.tool_calls.map(|calls| {
                         calls.into_iter().map(|call| {
@@ -772,7 +738,7 @@ impl From<crate::provider::types::ChatRequest> for ChatRequest {
                             }
                         }).collect()
                     });
-                    
+
                     Message::Assistant(AssistantMessage {
                         content,
                         name: msg.name,
@@ -803,7 +769,7 @@ impl From<crate::provider::types::ChatRequest> for ChatRequest {
                         }
                         None => MessageContent::Text(String::new()),
                     };
-                    
+
                     Message::Tool(ToolResponseMessage {
                         content,
                         tool_call_id: msg.tool_call_id.unwrap_or_default(),
@@ -811,11 +777,12 @@ impl From<crate::provider::types::ChatRequest> for ChatRequest {
                 }
             }
         }).collect();
-        
+
         // Convert tools
         let tools = req.tools.map(|tools| {
-            tools.into_iter().map(|tool| {
-                Tool {
+            tools
+                .into_iter()
+                .map(|tool| Tool {
                     type_: tool.tool_type,
                     function: FunctionDefinition {
                         name: tool.function.name,
@@ -823,10 +790,10 @@ impl From<crate::provider::types::ChatRequest> for ChatRequest {
                         parameters: Some(tool.function.parameters),
                         strict: tool.function.strict,
                     },
-                }
-            }).collect()
+                })
+                .collect()
         });
-        
+
         // Convert tool choice
         let tool_choice = req.tool_choice.map(|choice| match choice {
             crate::provider::types::ToolChoice::String(s) => ToolChoice::String(s),
@@ -839,7 +806,7 @@ impl From<crate::provider::types::ChatRequest> for ChatRequest {
                 })
             }
         });
-        
+
         // Convert response format
         let response_format = req.response_format.map(|format| match format {
             crate::provider::types::ResponseFormat::Text => ResponseFormat::Text,
@@ -855,13 +822,13 @@ impl From<crate::provider::types::ChatRequest> for ChatRequest {
                 }
             }
         });
-        
+
         // Convert stop
         let stop = req.stop.map(|stop| match stop {
             crate::provider::types::Stop::Single(s) => Stop::String(s),
             crate::provider::types::Stop::Multiple(arr) => Stop::Array(arr),
         });
-        
+
         ChatRequest {
             messages,
             model: Some(req.model),
@@ -880,9 +847,9 @@ impl From<crate::provider::types::ChatRequest> for ChatRequest {
             seed: req.seed,
             tools,
             tool_choice,
-            logit_bias: req.logit_bias.map(|bias| {
-                bias.into_iter().map(|(k, v)| (k, v as f32)).collect()
-            }),
+            logit_bias: req
+                .logit_bias
+                .map(|bias| bias.into_iter().map(|(k, v)| (k, v as f32)).collect()),
             logprobs: req.logprobs,
             top_logprobs: req.top_logprobs.map(|t| t as u32),
             user: req.user,
@@ -900,93 +867,102 @@ impl From<crate::provider::types::ChatRequest> for ChatRequest {
 impl From<ChatResponse> for crate::provider::types::ChatResponse {
     fn from(resp: ChatResponse) -> Self {
         // Convert choices
-        let choices = resp.choices.into_iter().map(|choice| {
-            // Convert message
-            let message = {
-                // Convert content to unified Content type
-                let content = choice.message.content.map(|c| match c {
-                    MessageContent::Text(text) => crate::provider::types::Content::Text(text),
-                    MessageContent::Parts(parts) => {
-                        // Convert parts to unified ContentPart format
-                        let mut content_parts = Vec::new();
-                        for part in parts {
-                            match part {
-                                ContentPart::Text { text } => {
-                                    content_parts.push(crate::provider::types::ContentPart::Text { text });
-                                }
-                                ContentPart::ImageUrl { image_url } => {
-                                    content_parts.push(crate::provider::types::ContentPart::ImageUrl {
-                                        image_url: crate::provider::types::ImageUrl {
-                                            url: image_url.url,
-                                            detail: image_url.detail.map(|d| match d.as_str() {
+        let choices = resp
+            .choices
+            .into_iter()
+            .map(|choice| {
+                // Convert message
+                let message = {
+                    // Convert content to unified Content type
+                    let content = choice.message.content.map(|c| match c {
+                        MessageContent::Text(text) => crate::provider::types::Content::Text(text),
+                        MessageContent::Parts(parts) => {
+                            // Convert parts to unified ContentPart format
+                            let mut content_parts = Vec::new();
+                            for part in parts {
+                                match part {
+                                    ContentPart::Text { text } => {
+                                        content_parts.push(
+                                            crate::provider::types::ContentPart::Text { text },
+                                        );
+                                    }
+                                    ContentPart::ImageUrl { image_url } => {
+                                        content_parts.push(
+                                            crate::provider::types::ContentPart::ImageUrl {
+                                                image_url: crate::provider::types::ImageUrl {
+                                                    url: image_url.url,
+                                                    detail: image_url.detail.map(|d| {
+                                                        match d.as_str() {
                                                 "low" => crate::provider::types::ImageDetail::Low,
                                                 "high" => crate::provider::types::ImageDetail::High,
                                                 "auto" => crate::provider::types::ImageDetail::Auto,
                                                 _ => crate::provider::types::ImageDetail::Auto,
-                                            }),
-                                        },
-                                    });
-                                }
-                                // TODO: Support other content types (audio, video)
-                                _ => {
-                                    // Skip unsupported content types for now
+                                            }
+                                                    }),
+                                                },
+                                            },
+                                        );
+                                    }
+                                    // TODO: Support other content types (audio, video)
+                                    _ => {
+                                        // Skip unsupported content types for now
+                                    }
                                 }
                             }
+                            crate::provider::types::Content::Parts(content_parts)
                         }
-                        crate::provider::types::Content::Parts(content_parts)
+                    });
+
+                    // Convert tool calls
+                    let tool_calls = choice.message.tool_calls.map(|calls| {
+                        calls
+                            .into_iter()
+                            .map(|call| crate::provider::types::ToolCall {
+                                id: call.id,
+                                tool_type: call.type_,
+                                function: crate::provider::types::ToolCallFunction {
+                                    name: call.function.name,
+                                    arguments: call.function.arguments,
+                                },
+                            })
+                            .collect()
+                    });
+
+                    crate::provider::types::ChatMessage {
+                        role: crate::provider::types::Role::Assistant,
+                        content,
+                        name: choice.message.name,
+                        tool_calls,
+                        tool_call_id: None,
                     }
+                };
+
+                // Convert finish reason (currently unused, but kept for future use)
+                let _finish_reason = choice.finish_reason.map(|r| match r.as_str() {
+                    "stop" => crate::provider::types::FinishReason::Stop,
+                    "length" => crate::provider::types::FinishReason::Length,
+                    "tool_calls" => crate::provider::types::FinishReason::ToolCalls,
+                    "content_filter" => crate::provider::types::FinishReason::ContentFilter,
+                    "function_call" => crate::provider::types::FinishReason::FunctionCall,
+                    _ => crate::provider::types::FinishReason::Stop, // Default
                 });
-                
-                // Convert tool calls
-                let tool_calls = choice.message.tool_calls.map(|calls| {
-                    calls.into_iter().map(|call| {
-                        crate::provider::types::ToolCall {
-                            id: call.id,
-                            tool_type: call.type_,
-                            function: crate::provider::types::ToolCallFunction {
-                                name: call.function.name,
-                                arguments: call.function.arguments,
-                            },
-                        }
-                    }).collect()
-                });
-                
-                crate::provider::types::ChatMessage {
-                    role: crate::provider::types::Role::Assistant,
-                    content,
-                    name: choice.message.name,
-                    tool_calls,
-                    tool_call_id: None,
+
+                crate::provider::types::ChatChoice {
+                    index: choice.index as i32,
+                    message,
+                    finish_reason: crate::provider::types::FinishReason::Stop,
+                    logprobs: None, // OpenRouter doesn't provide logprobs
                 }
-            };
-            
-            // Convert finish reason (currently unused, but kept for future use)
-            let _finish_reason = choice.finish_reason.map(|r| match r.as_str() {
-                "stop" => crate::provider::types::FinishReason::Stop,
-                "length" => crate::provider::types::FinishReason::Length,
-                "tool_calls" => crate::provider::types::FinishReason::ToolCalls,
-                "content_filter" => crate::provider::types::FinishReason::ContentFilter,
-                "function_call" => crate::provider::types::FinishReason::FunctionCall,
-                _ => crate::provider::types::FinishReason::Stop, // Default
-            });
-            
-            crate::provider::types::ChatChoice {
-                index: choice.index as i32,
-                message,
-                finish_reason: crate::provider::types::FinishReason::Stop,
-                logprobs: None, // OpenRouter doesn't provide logprobs
-            }
-        }).collect();
-        
+            })
+            .collect();
+
         // Convert usage
-        let usage = resp.usage.map(|u| {
-            crate::provider::types::Usage {
-                prompt_tokens: u.prompt_tokens as i32,
-                completion_tokens: u.completion_tokens as i32,
-                total_tokens: u.total_tokens as i32,
-            }
+        let usage = resp.usage.map(|u| crate::provider::types::Usage {
+            prompt_tokens: u.prompt_tokens as i32,
+            completion_tokens: u.completion_tokens as i32,
+            total_tokens: u.total_tokens as i32,
         });
-        
+
         crate::provider::types::ChatResponse {
             id: resp.id,
             object: resp.object,
@@ -1002,20 +978,22 @@ impl From<ChatResponse> for crate::provider::types::ChatResponse {
 impl From<EmbeddingsResponse> for crate::provider::types::EmbeddingResponse {
     fn from(resp: EmbeddingsResponse) -> Self {
         // Convert data
-        let data = resp.data.into_iter().map(|embedding| {
-            crate::provider::types::EmbeddingObject {
+        let data = resp
+            .data
+            .into_iter()
+            .map(|embedding| crate::provider::types::EmbeddingObject {
                 index: embedding.index as usize,
                 embedding: embedding.embedding,
                 object: embedding.object,
-            }
-        }).collect();
-        
+            })
+            .collect();
+
         // Convert usage
         let usage = crate::provider::types::EmbeddingUsage {
             prompt_tokens: resp.usage.prompt_tokens,
             total_tokens: resp.usage.total_tokens,
         };
-        
+
         crate::provider::types::EmbeddingResponse {
             object: resp.object,
             data,

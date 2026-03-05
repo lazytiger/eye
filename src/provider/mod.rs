@@ -12,8 +12,7 @@ pub mod openrouter;
 pub mod types;
 
 pub use self::types::*;
-use anyhow::{Context, Result};
-use futures::Stream;
+use anyhow::Result;
 
 #[async_trait::async_trait]
 pub trait Provider: Send + Sync {

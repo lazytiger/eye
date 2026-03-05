@@ -1,10 +1,10 @@
-
-
 //!
 //! This module defines common types used across all model providers,
 //! including chat requests/responses, embedding requests/responses,
 //! and model capabilities.
 
+use crate::utils::reqwest_client;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -177,44 +177,65 @@ impl ChatMessage {
     }
 
     /// Create a new chat message with image
-    pub fn new_with_image(role: Role, text: impl Into<String>, image_url: impl Into<String>) -> Self {
-        Self::new_multimodal(role, vec![
-            ContentPart::Text { text: text.into() },
-            ContentPart::ImageUrl { 
-                image_url: ImageUrl { 
-                    url: image_url.into(),
-                    detail: None,
-                }
-            },
-        ])
+    pub fn new_with_image(
+        role: Role,
+        text: impl Into<String>,
+        image_url: impl Into<String>,
+    ) -> Self {
+        Self::new_multimodal(
+            role,
+            vec![
+                ContentPart::Text { text: text.into() },
+                ContentPart::ImageUrl {
+                    image_url: ImageUrl {
+                        url: image_url.into(),
+                        detail: None,
+                    },
+                },
+            ],
+        )
     }
 
     /// Create a new chat message with audio
-    pub fn new_with_audio(role: Role, text: impl Into<String>, audio_url: impl Into<String>) -> Self {
-        Self::new_multimodal(role, vec![
-            ContentPart::Text { text: text.into() },
-            ContentPart::AudioUrl { 
-                audio_url: AudioUrl { 
-                    url: audio_url.into(),
-                    format: None,
-                    language: None,
-                }
-            },
-        ])
+    pub fn new_with_audio(
+        role: Role,
+        text: impl Into<String>,
+        audio_url: impl Into<String>,
+    ) -> Self {
+        Self::new_multimodal(
+            role,
+            vec![
+                ContentPart::Text { text: text.into() },
+                ContentPart::AudioUrl {
+                    audio_url: AudioUrl {
+                        url: audio_url.into(),
+                        format: None,
+                        language: None,
+                    },
+                },
+            ],
+        )
     }
 
     /// Create a new chat message with video
-    pub fn new_with_video(role: Role, text: impl Into<String>, video_url: impl Into<String>) -> Self {
-        Self::new_multimodal(role, vec![
-            ContentPart::Text { text: text.into() },
-            ContentPart::VideoUrl { 
-                video_url: VideoUrl { 
-                    url: video_url.into(),
-                    format: None,
-                    audio_only: None,
-                }
-            },
-        ])
+    pub fn new_with_video(
+        role: Role,
+        text: impl Into<String>,
+        video_url: impl Into<String>,
+    ) -> Self {
+        Self::new_multimodal(
+            role,
+            vec![
+                ContentPart::Text { text: text.into() },
+                ContentPart::VideoUrl {
+                    video_url: VideoUrl {
+                        url: video_url.into(),
+                        format: None,
+                        audio_only: None,
+                    },
+                },
+            ],
+        )
     }
 
     /// Check if the message contains any multimodal content
@@ -600,5 +621,53 @@ bitflags::bitflags! {
         const AUDIO_INPUT = 1 << 3;
         const VIDEO_INPUT = 1 << 4;
         const OBJECT_GENERATION = 1 << 5; // JSON mode
+    }
+}
+
+pub async fn call_chat_completions<
+    RQ: From<ChatRequest> + Serialize,
+    RS: Into<ChatResponse> + DeserializeOwned,
+>(
+    url: &str,
+    api_key: &str,
+    request: ChatRequest,
+) -> anyhow::Result<ChatResponse> {
+    let req: RQ = request.into();
+    let resp = reqwest_client()
+        .post(url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&req)
+        .send()
+        .await?;
+    if resp.status().is_success() {
+        let response = resp.json::<RS>().await?;
+        Ok(response.into())
+    } else {
+        anyhow::bail!("Failed to call chat completions: {:?}", resp.text().await?);
+    }
+}
+
+pub async fn call_embedding<
+    RQ: From<EmbeddingRequest> + Serialize,
+    RS: Into<EmbeddingResponse> + DeserializeOwned,
+>(
+    url: &str,
+    api_key: &str,
+    request: EmbeddingRequest,
+) -> anyhow::Result<EmbeddingResponse> {
+    let req: RQ = request.into();
+    let resp = reqwest_client()
+        .post(url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&req)
+        .send()
+        .await?;
+    if resp.status().is_success() {
+        let response = resp.json::<RS>().await?;
+        Ok(response.into())
+    } else {
+        anyhow::bail!("Failed to call chat completions: {:?}", resp.text().await?);
     }
 }

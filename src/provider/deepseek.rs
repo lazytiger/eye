@@ -1,6 +1,6 @@
+use crate::provider::call_chat_completions;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-
 // ==========================================
 // /chat/completions
 // ==========================================
@@ -236,157 +236,165 @@ pub struct Usage {
 impl From<crate::provider::types::ChatRequest> for DeepSeekRequest {
     fn from(req: crate::provider::types::ChatRequest) -> Self {
         // Convert messages
-        let messages = req.messages.into_iter().map(|msg| {
-            match msg.role {
-                crate::provider::types::Role::System => {
-                    // Extract text content from system message
-                    let content = match msg.content {
-                        Some(crate::provider::types::Content::Text(text)) => text,
-                        Some(crate::provider::types::Content::Parts(parts)) => {
-                            // Extract text from parts
-                            let mut text_parts = Vec::new();
-                            for part in parts {
-                                match part {
-                                    crate::provider::types::ContentPart::Text { text } => {
-                                        text_parts.push(text);
-                                    }
-                                    _ => {
-                                        // Skip non-text parts for system messages
-                                        // DeepSeek doesn't support multimodal input
-                                    }
-                                }
-                            }
-                            text_parts.join(" ")
-                        }
-                        None => String::new(),
-                    };
-                    
-                    Message::System {
-                        content,
-                        name: msg.name,
-                    }
-                }
-                crate::provider::types::Role::User => {
-                    // Extract text content from user message
-                    // DeepSeek doesn't support multimodal input, so we extract text only
-                    let content = match msg.content {
-                        Some(crate::provider::types::Content::Text(text)) => text,
-                        Some(crate::provider::types::Content::Parts(parts)) => {
-                            // Extract text from parts
-                            let mut text_parts = Vec::new();
-                            for part in parts {
-                                match part {
-                                    crate::provider::types::ContentPart::Text { text } => {
-                                        text_parts.push(text);
-                                    }
-                                    _ => {
-                                        // Skip non-text parts
-                                        // DeepSeek doesn't support multimodal input
+        let messages = req
+            .messages
+            .into_iter()
+            .map(|msg| {
+                match msg.role {
+                    crate::provider::types::Role::System => {
+                        // Extract text content from system message
+                        let content = match msg.content {
+                            Some(crate::provider::types::Content::Text(text)) => text,
+                            Some(crate::provider::types::Content::Parts(parts)) => {
+                                // Extract text from parts
+                                let mut text_parts = Vec::new();
+                                for part in parts {
+                                    match part {
+                                        crate::provider::types::ContentPart::Text { text } => {
+                                            text_parts.push(text);
+                                        }
+                                        _ => {
+                                            // Skip non-text parts for system messages
+                                            // DeepSeek doesn't support multimodal input
+                                        }
                                     }
                                 }
+                                text_parts.join(" ")
                             }
-                            text_parts.join(" ")
+                            None => String::new(),
+                        };
+
+                        Message::System {
+                            content,
+                            name: msg.name,
                         }
-                        None => String::new(),
-                    };
-                    
-                    Message::User {
-                        content,
-                        name: msg.name,
                     }
-                }
-                crate::provider::types::Role::Assistant => {
-                    // Extract text content from assistant message
-                    let content = msg.content.and_then(|c| match c {
-                        crate::provider::types::Content::Text(text) => Some(text),
-                        crate::provider::types::Content::Parts(parts) => {
-                            // Extract text from parts
-                            let mut text_parts = Vec::new();
-                            for part in parts {
-                                match part {
-                                    crate::provider::types::ContentPart::Text { text } => {
-                                        text_parts.push(text);
-                                    }
-                                    _ => {
-                                        // Skip non-text parts
+                    crate::provider::types::Role::User => {
+                        // Extract text content from user message
+                        // DeepSeek doesn't support multimodal input, so we extract text only
+                        let content = match msg.content {
+                            Some(crate::provider::types::Content::Text(text)) => text,
+                            Some(crate::provider::types::Content::Parts(parts)) => {
+                                // Extract text from parts
+                                let mut text_parts = Vec::new();
+                                for part in parts {
+                                    match part {
+                                        crate::provider::types::ContentPart::Text { text } => {
+                                            text_parts.push(text);
+                                        }
+                                        _ => {
+                                            // Skip non-text parts
+                                            // DeepSeek doesn't support multimodal input
+                                        }
                                     }
                                 }
+                                text_parts.join(" ")
                             }
-                            if !text_parts.is_empty() {
-                                Some(text_parts.join(" "))
-                            } else {
-                                None
-                            }
+                            None => String::new(),
+                        };
+
+                        Message::User {
+                            content,
+                            name: msg.name,
                         }
-                    });
-                    
-                    // Convert tool calls
-                    let tool_calls = msg.tool_calls.map(|calls| {
-                        calls.into_iter().map(|call| {
-                            ToolCall {
-                                id: call.id,
-                                type_: ToolType::Function,
-                                function: FunctionCall {
-                                    name: call.function.name,
-                                    arguments: call.function.arguments,
-                                },
-                            }
-                        }).collect()
-                    });
-                    
-                    Message::Assistant {
-                        content,
-                        name: msg.name,
-                        tool_calls,
-                        prefix: None,
-                        reasoning_content: None,
                     }
-                }
-                crate::provider::types::Role::Tool => {
-                    // Extract text content from tool message
-                    let content = match msg.content {
-                        Some(crate::provider::types::Content::Text(text)) => text,
-                        Some(crate::provider::types::Content::Parts(parts)) => {
-                            // Extract text from parts
-                            let mut text_parts = Vec::new();
-                            for part in parts {
-                                match part {
-                                    crate::provider::types::ContentPart::Text { text } => {
-                                        text_parts.push(text);
-                                    }
-                                    _ => {
-                                        // Skip non-text parts
+                    crate::provider::types::Role::Assistant => {
+                        // Extract text content from assistant message
+                        let content = msg.content.and_then(|c| match c {
+                            crate::provider::types::Content::Text(text) => Some(text),
+                            crate::provider::types::Content::Parts(parts) => {
+                                // Extract text from parts
+                                let mut text_parts = Vec::new();
+                                for part in parts {
+                                    match part {
+                                        crate::provider::types::ContentPart::Text { text } => {
+                                            text_parts.push(text);
+                                        }
+                                        _ => {
+                                            // Skip non-text parts
+                                        }
                                     }
                                 }
+                                if !text_parts.is_empty() {
+                                    Some(text_parts.join(" "))
+                                } else {
+                                    None
+                                }
                             }
-                            text_parts.join(" ")
+                        });
+
+                        // Convert tool calls
+                        let tool_calls = msg.tool_calls.map(|calls| {
+                            calls
+                                .into_iter()
+                                .map(|call| ToolCall {
+                                    id: call.id,
+                                    type_: ToolType::Function,
+                                    function: FunctionCall {
+                                        name: call.function.name,
+                                        arguments: call.function.arguments,
+                                    },
+                                })
+                                .collect()
+                        });
+
+                        Message::Assistant {
+                            content,
+                            name: msg.name,
+                            tool_calls,
+                            prefix: None,
+                            reasoning_content: None,
                         }
-                        None => String::new(),
-                    };
-                    
-                    Message::Tool {
-                        tool_call_id: msg.tool_call_id.unwrap_or_default(),
-                        content,
+                    }
+                    crate::provider::types::Role::Tool => {
+                        // Extract text content from tool message
+                        let content = match msg.content {
+                            Some(crate::provider::types::Content::Text(text)) => text,
+                            Some(crate::provider::types::Content::Parts(parts)) => {
+                                // Extract text from parts
+                                let mut text_parts = Vec::new();
+                                for part in parts {
+                                    match part {
+                                        crate::provider::types::ContentPart::Text { text } => {
+                                            text_parts.push(text);
+                                        }
+                                        _ => {
+                                            // Skip non-text parts
+                                        }
+                                    }
+                                }
+                                text_parts.join(" ")
+                            }
+                            None => String::new(),
+                        };
+
+                        Message::Tool {
+                            tool_call_id: msg.tool_call_id.unwrap_or_default(),
+                            content,
+                        }
                     }
                 }
-            }
-        }).collect();
-        
+            })
+            .collect();
+
         // Convert tools
         let tools = req.tools.map(|tools| {
-            tools.into_iter().map(|tool| {
-                Tool {
-                    type_: ToolType::Function,
-                    function: Function {
-                        name: tool.function.name,
-                        description: tool.function.description,
-                        parameters: Some(tool.function.parameters),
-                        // strict field not supported by DeepSeek
-                    },
-                }
-            }).collect()
+            tools
+                .into_iter()
+                .map(|tool| {
+                    Tool {
+                        type_: ToolType::Function,
+                        function: Function {
+                            name: tool.function.name,
+                            description: tool.function.description,
+                            parameters: Some(tool.function.parameters),
+                            // strict field not supported by DeepSeek
+                        },
+                    }
+                })
+                .collect()
         });
-        
+
         // Convert tool choice
         let tool_choice = req.tool_choice.map(|choice| match choice {
             crate::provider::types::ToolChoice::String(s) => match s.as_str() {
@@ -404,7 +412,7 @@ impl From<crate::provider::types::ChatRequest> for DeepSeekRequest {
                 })
             }
         });
-        
+
         // Convert response format
         let response_format = req.response_format.map(|format| match format {
             crate::provider::types::ResponseFormat::Text => ResponseFormat {
@@ -420,20 +428,20 @@ impl From<crate::provider::types::ChatRequest> for DeepSeekRequest {
                 }
             }
         });
-        
+
         // Convert stop
         let stop = req.stop.map(|stop| match stop {
             crate::provider::types::Stop::Single(s) => Stop::String(s),
             crate::provider::types::Stop::Multiple(arr) => Stop::Array(arr),
         });
-        
+
         // Convert model (assuming DeepSeek model)
         let model = match req.model.as_str() {
             "deepseek-chat" => DeepSeekModel::DeepSeekChat,
             "deepseek-reasoner" => DeepSeekModel::DeepSeekReasoner,
             _ => DeepSeekModel::DeepSeekChat, // Default
         };
-        
+
         DeepSeekRequest {
             messages,
             model,
@@ -443,10 +451,8 @@ impl From<crate::provider::types::ChatRequest> for DeepSeekRequest {
             response_format,
             stop,
             stream: req.stream,
-            stream_options: req.stream_options.map(|options| {
-                StreamOptions {
-                    include_usage: options.include_usage,
-                }
+            stream_options: req.stream_options.map(|options| StreamOptions {
+                include_usage: options.include_usage,
             }),
             temperature: req.temperature,
             top_p: req.top_p,
@@ -484,7 +490,7 @@ impl DeepseekProvider {
             base_url: "https://api.deepseek.com".to_string(),
         }
     }
-    
+
     /// Create a new DeepSeek provider with custom base URL
     pub fn new_with_base_url(api_key: String, model: String, base_url: String) -> Self {
         Self {
@@ -503,39 +509,12 @@ impl crate::provider::Provider for DeepseekProvider {
 
     async fn chat(
         &self,
-        request: crate::provider::types::ChatRequest,
+        mut request: crate::provider::types::ChatRequest,
     ) -> anyhow::Result<crate::provider::types::ChatResponse> {
-        // Convert unified request to DeepSeek request
-        let _deepseek_request: DeepSeekRequest = request.into();
-        
-        // TODO: Implement actual DeepSeek API call
-        // For now, return a mock response
-        Ok(crate::provider::types::ChatResponse {
-            id: "mock-deepseek-id".to_string(),
-            object: "chat.completion".to_string(),
-            created: 1234567890,
-            model: self.model.clone(),
-            choices: vec![crate::provider::types::ChatChoice {
-                index: 0,
-                message: crate::provider::types::ChatMessage {
-                    role: crate::provider::types::Role::Assistant,
-                    content: Some(crate::provider::types::Content::Text(
-                        "This is a mock DeepSeek response. Actual API call not implemented yet.".to_string(),
-                    )),
-                    name: None,
-                    tool_calls: None,
-                    tool_call_id: None,
-                },
-                finish_reason: crate::provider::types::FinishReason::Stop,
-                logprobs: None,
-            }],
-            usage: Some(crate::provider::types::Usage {
-                prompt_tokens: 10,
-                completion_tokens: 20,
-                total_tokens: 30,
-            }),
-            system_fingerprint: None,
-        })
+        request.model = self.model.clone();
+        let url = format!("{}/chat/completions", self.base_url);
+        call_chat_completions::<DeepSeekRequest, DeepSeekResponse>(&url, &self.api_key, request)
+            .await
     }
 
     async fn embedding(
@@ -569,105 +548,123 @@ impl crate::provider::Provider for DeepseekProvider {
 
     fn max_context_length(&self) -> usize {
         // DeepSeek models have 128K context length
-        131072  // 128K tokens
+        131072 // 128K tokens
     }
 }
 
 impl From<DeepSeekResponse> for crate::provider::types::ChatResponse {
     fn from(resp: DeepSeekResponse) -> Self {
         // Convert choices
-        let choices = resp.choices.into_iter().map(|choice| {
-            // Convert message
-            let message = match choice.message {
-                Message::Assistant { content, name, tool_calls, prefix: _, reasoning_content: _ } => {
-                    // Convert content to unified Content type
-                    let content = content.map(|text| crate::provider::types::Content::Text(text));
-                    
-                    // Convert tool calls
-                    let tool_calls = tool_calls.map(|calls| {
-                        calls.into_iter().map(|call| {
-                            crate::provider::types::ToolCall {
-                                id: call.id,
-                                tool_type: match call.type_ {
-                                    ToolType::Function => "function".to_string(),
-                                },
-                                function: crate::provider::types::ToolCallFunction {
-                                    name: call.function.name,
-                                    arguments: call.function.arguments,
-                                },
-                            }
-                        }).collect()
-                    });
-                    
-                    crate::provider::types::ChatMessage {
-                        role: crate::provider::types::Role::Assistant,
+        let choices = resp
+            .choices
+            .into_iter()
+            .map(|choice| {
+                // Convert message
+                let message = match choice.message {
+                    Message::Assistant {
                         content,
                         name,
                         tool_calls,
-                        tool_call_id: None,
+                        prefix: _,
+                        reasoning_content: _,
+                    } => {
+                        // Convert content to unified Content type
+                        let content =
+                            content.map(|text| crate::provider::types::Content::Text(text));
+
+                        // Convert tool calls
+                        let tool_calls = tool_calls.map(|calls| {
+                            calls
+                                .into_iter()
+                                .map(|call| crate::provider::types::ToolCall {
+                                    id: call.id,
+                                    tool_type: match call.type_ {
+                                        ToolType::Function => "function".to_string(),
+                                    },
+                                    function: crate::provider::types::ToolCallFunction {
+                                        name: call.function.name,
+                                        arguments: call.function.arguments,
+                                    },
+                                })
+                                .collect()
+                        });
+
+                        crate::provider::types::ChatMessage {
+                            role: crate::provider::types::Role::Assistant,
+                            content,
+                            name,
+                            tool_calls,
+                            tool_call_id: None,
+                        }
                     }
-                }
-                _ => {
-                    // Should not happen for assistant messages
-                    crate::provider::types::ChatMessage {
-                        role: crate::provider::types::Role::Assistant,
-                        content: None,
-                        name: None,
-                        tool_calls: None,
-                        tool_call_id: None,
+                    _ => {
+                        // Should not happen for assistant messages
+                        crate::provider::types::ChatMessage {
+                            role: crate::provider::types::Role::Assistant,
+                            content: None,
+                            name: None,
+                            tool_calls: None,
+                            tool_call_id: None,
+                        }
                     }
+                };
+
+                // Convert finish reason (currently unused, but kept for future use)
+                let _finish_reason = choice.finish_reason.map(|r| match r.as_str() {
+                    "stop" => crate::provider::types::FinishReason::Stop,
+                    "length" => crate::provider::types::FinishReason::Length,
+                    "tool_calls" => crate::provider::types::FinishReason::ToolCalls,
+                    "content_filter" => crate::provider::types::FinishReason::ContentFilter,
+                    "function_call" => crate::provider::types::FinishReason::FunctionCall,
+                    _ => crate::provider::types::FinishReason::Stop, // Default
+                });
+
+                // Convert logprobs
+                let logprobs = choice
+                    .logprobs
+                    .map(|logprobs| crate::provider::types::Logprobs {
+                        content: logprobs.content.map(|content| {
+                            content
+                                .into_iter()
+                                .map(|c| crate::provider::types::LogprobContent {
+                                    token: c.token,
+                                    logprob: c.logprob,
+                                    bytes: c
+                                        .bytes
+                                        .map(|bytes| bytes.into_iter().map(|b| b as i32).collect()),
+                                    top_logprobs: Some(
+                                        c.top_logprobs
+                                            .into_iter()
+                                            .map(|t| crate::provider::types::TopLogprob {
+                                                token: t.token,
+                                                logprob: t.logprob,
+                                                bytes: t.bytes.map(|bytes| {
+                                                    bytes.into_iter().map(|b| b as i32).collect()
+                                                }),
+                                            })
+                                            .collect(),
+                                    ),
+                                })
+                                .collect()
+                        }),
+                    });
+
+                crate::provider::types::ChatChoice {
+                    index: choice.index as i32,
+                    message,
+                    finish_reason: crate::provider::types::FinishReason::Stop,
+                    logprobs,
                 }
-            };
-            
-            // Convert finish reason (currently unused, but kept for future use)
-            let _finish_reason = choice.finish_reason.map(|r| match r.as_str() {
-                "stop" => crate::provider::types::FinishReason::Stop,
-                "length" => crate::provider::types::FinishReason::Length,
-                "tool_calls" => crate::provider::types::FinishReason::ToolCalls,
-                "content_filter" => crate::provider::types::FinishReason::ContentFilter,
-                "function_call" => crate::provider::types::FinishReason::FunctionCall,
-                _ => crate::provider::types::FinishReason::Stop, // Default
-            });
-            
-            // Convert logprobs
-            let logprobs = choice.logprobs.map(|logprobs| {
-                crate::provider::types::Logprobs {
-                    content: logprobs.content.map(|content| {
-                        content.into_iter().map(|c| {
-                            crate::provider::types::LogprobContent {
-                                token: c.token,
-                                logprob: c.logprob,
-                                bytes: c.bytes.map(|bytes| bytes.into_iter().map(|b| b as i32).collect()),
-                                top_logprobs: Some(c.top_logprobs.into_iter().map(|t| {
-                                    crate::provider::types::TopLogprob {
-                                        token: t.token,
-                                        logprob: t.logprob,
-                                        bytes: t.bytes.map(|bytes| bytes.into_iter().map(|b| b as i32).collect()),
-                                    }
-                                }).collect()),
-                            }
-                        }).collect()
-                    }),
-                }
-            });
-            
-            crate::provider::types::ChatChoice {
-                index: choice.index as i32,
-                message,
-                finish_reason: crate::provider::types::FinishReason::Stop,
-                logprobs,
-            }
-        }).collect();
-        
+            })
+            .collect();
+
         // Convert usage
-        let usage = resp.usage.map(|u| {
-            crate::provider::types::Usage {
-                prompt_tokens: u.prompt_tokens as i32,
-                completion_tokens: u.completion_tokens as i32,
-                total_tokens: u.total_tokens as i32,
-            }
+        let usage = resp.usage.map(|u| crate::provider::types::Usage {
+            prompt_tokens: u.prompt_tokens as i32,
+            completion_tokens: u.completion_tokens as i32,
+            total_tokens: u.total_tokens as i32,
         });
-        
+
         crate::provider::types::ChatResponse {
             id: resp.id,
             object: resp.object,
