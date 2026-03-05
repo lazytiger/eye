@@ -31,6 +31,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+html2text = "0.1.13"
 
 # Async trait support
 async-trait = "0.1"

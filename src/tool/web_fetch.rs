@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use reqwest;
 use serde_json::{json, Value};
 use anyhow::Result;
+use html2text;
 
 use crate::tool::{ExecuteResult, Tool};
 
@@ -26,16 +27,11 @@ impl Default for WebFetchTool {
 }
 
 impl WebFetchTool {
-    /// Simplifies HTML content by removing tags and extracting text
-    fn simplify_html(html: String) -> String {
-        // Very basic HTML to text conversion for testing purposes
-        html.replace(|c| c == '<' || c == '>', " ")
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
-            .chars()
-            .take(500)
-            .collect::<String>() + "..."
+    /// Converts HTML content to readable Markdown format
+    fn html_to_markdown(html: &str) -> String {
+        // For testing purposes, we'll use a simple implementation
+        // In production, you would use html2text or similar libraries
+        html2text::from_read(html.as_bytes(), 80)
     }
 }
 
@@ -104,11 +100,12 @@ impl Tool for WebFetchTool {
         
         // For now, we'll return a simplified version of the content
         // In production, you would extract relevant content and convert to markdown
+        let markdown_content = WebFetchTool::html_to_markdown(&html_content);
         let simplified_content = format!(
             "Webpage content from {} ({}) characters)\n\n{}",
             url,
             html_content.len(),
-            WebFetchTool::simplify_html(html_content)
+            markdown_content
         );
 
         Ok(ExecuteResult::Success(Value::String(simplified_content)))
