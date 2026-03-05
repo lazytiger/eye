@@ -6,7 +6,7 @@ use serde_json::Value;
 // ==========================================
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct DeepSeekRequest {
+struct DeepSeekRequest {
     pub messages: Vec<Message>,
     pub model: DeepSeekModel,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -41,14 +41,14 @@ pub struct DeepSeekRequest {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
-pub enum DeepSeekModel {
+enum DeepSeekModel {
     DeepSeekChat,
     DeepSeekReasoner,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
-pub enum Message {
+enum Message {
     System {
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -78,33 +78,33 @@ pub enum Message {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ResponseFormat {
+struct ResponseFormat {
     #[serde(rename = "type")]
     pub type_: ResponseFormatType,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
-pub enum ResponseFormatType {
+enum ResponseFormatType {
     Text,
     JsonObject,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
-pub enum Stop {
+enum Stop {
     String(String),
     Array(Vec<String>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct StreamOptions {
+struct StreamOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub include_usage: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Tool {
+struct Tool {
     #[serde(rename = "type")]
     pub type_: ToolType,
     pub function: Function,
@@ -112,12 +112,12 @@ pub struct Tool {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
-pub enum ToolType {
+enum ToolType {
     Function,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Function {
+struct Function {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -127,7 +127,7 @@ pub struct Function {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ToolCall {
+struct ToolCall {
     pub id: String,
     #[serde(rename = "type")]
     pub type_: ToolType,
@@ -135,40 +135,40 @@ pub struct ToolCall {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct FunctionCall {
+struct FunctionCall {
     pub name: String,
     pub arguments: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
-pub enum ToolChoice {
+enum ToolChoice {
     Mode(ToolChoiceMode),
     Specific(ToolChoiceSpecific),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
-pub enum ToolChoiceMode {
+enum ToolChoiceMode {
     None,
     Auto,
     Required,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ToolChoiceSpecific {
+struct ToolChoiceSpecific {
     #[serde(rename = "type")]
     pub type_: ToolType,
     pub function: FunctionName,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct FunctionName {
+struct FunctionName {
     pub name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Thinking {
+struct Thinking {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_tokens: Option<u32>,
 }
@@ -178,7 +178,7 @@ pub struct Thinking {
 // ==========================================
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct DeepSeekResponse {
+struct DeepSeekResponse {
     pub id: String,
     pub choices: Vec<Choice>,
     pub created: u64,
@@ -191,7 +191,7 @@ pub struct DeepSeekResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Choice {
+struct Choice {
     pub finish_reason: Option<String>,
     pub index: u32,
     pub message: Message,
@@ -200,13 +200,13 @@ pub struct Choice {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct LogProbs {
+struct LogProbs {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<Vec<LogProbContent>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct LogProbContent {
+struct LogProbContent {
     pub token: String,
     pub logprob: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -215,7 +215,7 @@ pub struct LogProbContent {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct TopLogProb {
+struct TopLogProb {
     pub token: String,
     pub logprob: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -223,7 +223,7 @@ pub struct TopLogProb {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Usage {
+struct Usage {
     pub completion_tokens: u32,
     pub prompt_tokens: u32,
     pub total_tokens: u32,

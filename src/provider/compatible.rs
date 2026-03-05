@@ -1,3 +1,4 @@
+#![allow(unused)]
 //! OpenAI-compatible API implementation
 //!
 //! This module provides types and provider implementation for OpenAI-compatible APIs
@@ -10,7 +11,7 @@ use std::collections::HashMap;
 /// Chat completion request message role
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
-pub enum Role {
+enum Role {
     System,
     User,
     Assistant,
@@ -19,7 +20,7 @@ pub enum Role {
 
 /// Chat completion request message
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ChatMessage {
+struct ChatMessage {
     /// Role of the message author
     pub role: Role,
     /// Content of the message
@@ -38,7 +39,7 @@ pub struct ChatMessage {
 
 /// Tool definition
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Tool {
+struct Tool {
     /// Type of the tool
     #[serde(rename = "type")]
     pub tool_type: String,
@@ -48,7 +49,7 @@ pub struct Tool {
 
 /// Function definition
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct FunctionDefinition {
+struct FunctionDefinition {
     /// Name of the function
     pub name: String,
     /// Description of the function
@@ -63,7 +64,7 @@ pub struct FunctionDefinition {
 
 /// Tool call in a chat completion message
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ToolCall {
+struct ToolCall {
     /// ID of the tool call
     pub id: String,
     /// Type of the tool
@@ -75,7 +76,7 @@ pub struct ToolCall {
 
 /// Function call in a tool call
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ToolCallFunction {
+struct ToolCallFunction {
     /// Name of the function to call
     pub name: String,
     /// Arguments to call the function with, as JSON string
@@ -85,7 +86,7 @@ pub struct ToolCallFunction {
 /// Tool choice option
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
-pub enum ToolChoice {
+enum ToolChoice {
     /// Automatic tool choice
     String(String),
     /// Named tool choice
@@ -94,7 +95,7 @@ pub enum ToolChoice {
 
 /// Named tool choice
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct NamedToolChoice {
+struct NamedToolChoice {
     /// Type of the tool choice
     #[serde(rename = "type")]
     pub tool_type: String,
@@ -104,7 +105,7 @@ pub struct NamedToolChoice {
 
 /// Named tool choice function
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct NamedToolChoiceFunction {
+struct NamedToolChoiceFunction {
     /// Name of the function to call
     pub name: String,
 }
@@ -112,7 +113,7 @@ pub struct NamedToolChoiceFunction {
 /// Response format type
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
-pub enum ResponseFormatType {
+enum ResponseFormatType {
     Text,
     JsonObject,
     JsonSchema,
@@ -121,7 +122,7 @@ pub enum ResponseFormatType {
 /// Response format specification
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum ResponseFormat {
+enum ResponseFormat {
     /// Text response format
     Text,
     /// JSON object response format
@@ -135,7 +136,7 @@ pub enum ResponseFormat {
 
 /// JSON schema format
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct JsonSchemaFormat {
+struct JsonSchemaFormat {
     /// Name of the JSON schema
     pub name: String,
     /// Description of the JSON schema
@@ -151,7 +152,7 @@ pub struct JsonSchemaFormat {
 /// Stop configuration
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
-pub enum Stop {
+enum Stop {
     /// Single stop sequence
     Single(String),
     /// Multiple stop sequences
@@ -160,7 +161,7 @@ pub enum Stop {
 
 /// Stream options
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct StreamOptions {
+struct StreamOptions {
     /// Whether to include usage in stream
     #[serde(skip_serializing_if = "Option::is_none")]
     pub include_usage: Option<bool>,
@@ -231,7 +232,7 @@ struct ChatCompletionRequest {
 
 /// Finish reason
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum FinishReason {
+enum FinishReason {
     #[serde(rename = "stop")]
     Stop,
     #[serde(rename = "length")]
@@ -246,7 +247,7 @@ pub enum FinishReason {
 
 /// Log probability content
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct LogprobContent {
+struct LogprobContent {
     /// Token
     pub token: String,
     /// Log probability
@@ -261,7 +262,7 @@ pub struct LogprobContent {
 
 /// Top log probability
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct TopLogprob {
+struct TopLogprob {
     /// Token
     pub token: String,
     /// Log probability
@@ -273,7 +274,7 @@ pub struct TopLogprob {
 
 /// Log probabilities
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Logprobs {
+struct Logprobs {
     /// Content
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<Vec<LogprobContent>>,
@@ -281,7 +282,7 @@ pub struct Logprobs {
 
 /// Chat completion choice
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ChatChoice {
+struct ChatChoice {
     /// Index of the choice
     pub index: i32,
     /// Message generated by the model
@@ -295,7 +296,7 @@ pub struct ChatChoice {
 
 /// Token usage statistics
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Usage {
+struct Usage {
     /// Number of tokens in the prompt
     pub prompt_tokens: i32,
     /// Number of tokens in the completion
@@ -306,7 +307,7 @@ pub struct Usage {
 
 /// Create chat completion response
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ChatCompletionResponse {
+struct ChatCompletionResponse {
     /// Unique identifier for the chat completion
     pub id: String,
     /// Object type

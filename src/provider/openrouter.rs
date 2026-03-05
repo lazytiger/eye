@@ -1,3 +1,4 @@
+#![allow(unused)]
 use crate::provider::{call_chat_completions, call_embedding};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
