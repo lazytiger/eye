@@ -174,7 +174,7 @@ impl Default for ModelConfig {
 impl Default for ToolsConfig {
     fn default() -> Self {
         Self {
-            enabled: vec!["shell".to_string()],
+            enabled: vec!["shell".to_string(), "time".to_string(), "search_web".to_string(), "fetch_webpage".to_string()],
             shell: ShellConfig::default(),
         }
     }

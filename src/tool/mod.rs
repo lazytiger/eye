@@ -83,8 +83,20 @@ pub mod shell;
 /// Time tool for getting current local time
 pub mod time;
 
+/// Search tool for web searching
+pub mod search;
+
+/// Web Fetch tool for retrieving webpage content
+pub mod web_fetch;
+
 /// Re-export shell tool
 pub use shell::ShellTool;
 
 /// Re-export time tool
 pub use time::TimeTool;
+
+/// Re-export search tool
+pub use search::SearchTool;
+
+/// Re-export web fetch tool
+pub use web_fetch::WebFetchTool;
