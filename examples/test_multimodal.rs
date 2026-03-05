@@ -14,28 +14,28 @@ async fn main() -> Result<()> {
     let provider = create_provider("openai", "gpt-4-vision-preview", "test-key")?;
 
     println!("1. Testing text-only message:");
-    test_text_message(&provider).await?;
+    test_text_message(&*provider).await?;
 
     println!("\n2. Testing image message:");
-    test_image_message(&provider).await?;
+    test_image_message(&*provider).await?;
 
     println!("\n3. Testing audio message:");
-    test_audio_message(&provider).await?;
+    test_audio_message(&*provider).await?;
 
     println!("\n4. Testing video message:");
-    test_video_message(&provider).await?;
+    test_video_message(&*provider).await?;
 
     println!("\n5. Testing mixed multimodal message:");
-    test_mixed_message(&provider).await?;
+    test_mixed_message(&*provider).await?;
 
     println!("\n6. Testing capabilities:");
-    test_capabilities(&provider);
+    test_capabilities(&*provider);
 
     println!("\nAll multimodal tests completed!");
     Ok(())
 }
 
-async fn test_text_message(provider: &impl Provider) -> Result<()> {
+async fn test_text_message(provider: &dyn Provider) -> Result<()> {
     // Create a simple text message
     let message = ChatMessage::new_text(Role::User, "Hello, world!");
 
@@ -73,7 +73,7 @@ async fn test_text_message(provider: &impl Provider) -> Result<()> {
     Ok(())
 }
 
-async fn test_image_message(provider: &impl Provider) -> Result<()> {
+async fn test_image_message(provider: &dyn Provider) -> Result<()> {
     // Create a message with image
     let message = ChatMessage::new_with_image(
         Role::User,
@@ -131,7 +131,7 @@ async fn test_image_message(provider: &impl Provider) -> Result<()> {
     Ok(())
 }
 
-async fn test_audio_message(provider: &impl Provider) -> Result<()> {
+async fn test_audio_message(provider: &dyn Provider) -> Result<()> {
     // Create a message with audio
     let message = ChatMessage::new_with_audio(
         Role::User,
@@ -186,7 +186,7 @@ async fn test_audio_message(provider: &impl Provider) -> Result<()> {
     Ok(())
 }
 
-async fn test_video_message(provider: &impl Provider) -> Result<()> {
+async fn test_video_message(provider: &dyn Provider) -> Result<()> {
     // Create a message with video
     let message = ChatMessage::new_with_video(
         Role::User,
@@ -241,7 +241,7 @@ async fn test_video_message(provider: &impl Provider) -> Result<()> {
     Ok(())
 }
 
-async fn test_mixed_message(provider: &impl Provider) -> Result<()> {
+async fn test_mixed_message(provider: &dyn Provider) -> Result<()> {
     // Create a mixed multimodal message
     let message = ChatMessage::new_multimodal(
         Role::User,
@@ -306,7 +306,7 @@ async fn test_mixed_message(provider: &impl Provider) -> Result<()> {
     Ok(())
 }
 
-fn test_capabilities(provider: &impl Provider) {
+fn test_capabilities(provider: &dyn Provider) {
     let capabilities = provider.capabilities();
 
     println!("  - Model capabilities:");

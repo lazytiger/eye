@@ -73,7 +73,7 @@ async fn basic_conversation() -> Result<(), Box<dyn std::error::Error>> {
         messages: vec![
             ChatMessage {
                 role: Role::User,
-                content: Content::Text("What is the capital of France?".to_string()),
+                content: Some(Content::Text("What is the capital of France?".to_string())),
                 name: None,
                 tool_calls: None,
                 tool_call_id: None,
@@ -103,11 +103,13 @@ async fn basic_conversation() -> Result<(), Box<dyn std::error::Error>> {
     let result = client.chat(request).await?;
 
     if let Some(choice) = result.choices.first() {
-        match &choice.message.content {
-            Content::Text(text) => println!("Assistant: {}", text),
-            Content::Parts(parts) => {
-                for part in parts {
-                    println!("Assistant: {:?}", part);
+        if let Some(content) = &choice.message.content {
+            match content {
+                Content::Text(text) => println!("Assistant: {}", text),
+                Content::Parts(parts) => {
+                    for part in parts {
+                        println!("Assistant: {:?}", part);
+                    }
                 }
             }
         }
@@ -125,28 +127,28 @@ async fn multi_turn_conversation() -> Result<(), Box<dyn std::error::Error>> {
         messages: vec![
             ChatMessage {
                 role: Role::System,
-                content: Content::Text("You are a travel assistant".to_string()),
+                content: Some(Content::Text("You are a travel assistant".to_string())),
                 name: None,
                 tool_calls: None,
                 tool_call_id: None,
             },
             ChatMessage {
                 role: Role::User,
-                content: Content::Text("I'm planning a trip to Japan.".to_string()),
+                content: Some(Content::Text("I'm planning a trip to Japan.".to_string())),
                 name: None,
                 tool_calls: None,
                 tool_call_id: None,
             },
             ChatMessage {
                 role: Role::Assistant,
-                content: Content::Text("That's great! Japan is an amazing destination. What would you like to know about?".to_string()),
+                content: Some(Content::Text("That's great! Japan is an amazing destination. What would you like to know about?".to_string())),
                 name: None,
                 tool_calls: None,
                 tool_call_id: None,
             },
             ChatMessage {
                 role: Role::User,
-                content: Content::Text("What are the must-visit temples in Tokyo?".to_string()),
+                content: Some(Content::Text("What are the must-visit temples in Tokyo?".to_string())),
                 name: None,
                 tool_calls: None,
                 tool_call_id: None,
@@ -176,11 +178,13 @@ async fn multi_turn_conversation() -> Result<(), Box<dyn std::error::Error>> {
     let result = client.chat(request).await?;
 
     if let Some(choice) = result.choices.first() {
-        match &choice.message.content {
-            Content::Text(text) => println!("Assistant: {}", text),
-            Content::Parts(parts) => {
-                for part in parts {
-                    println!("Assistant: {:?}", part);
+        if let Some(content) = &choice.message.content {
+            match content {
+                Content::Text(text) => println!("Assistant: {}", text),
+                Content::Parts(parts) => {
+                    for part in parts {
+                        println!("Assistant: {:?}", part);
+                    }
                 }
             }
         }

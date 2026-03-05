@@ -10,23 +10,23 @@ async fn main() -> Result<()> {
     // Test OpenAI provider
     println!("\n1. Testing OpenAI provider:");
     let openai_provider = create_provider("openai", "gpt-3.5-turbo", "test-key")?;
-    test_provider(&openai_provider).await?;
+    test_provider(&*openai_provider).await?;
 
     // Test OpenRouter provider
     println!("\n2. Testing OpenRouter provider:");
     let openrouter_provider = create_provider("openrouter", "openai/gpt-3.5-turbo", "test-key")?;
-    test_provider(&openrouter_provider).await?;
+    test_provider(&*openrouter_provider).await?;
 
     // Test DeepSeek provider
     println!("\n3. Testing DeepSeek provider:");
     let deepseek_provider = create_provider("deepseek", "deepseek-chat", "test-key")?;
-    test_provider(&deepseek_provider).await?;
+    test_provider(&*deepseek_provider).await?;
 
     println!("\nAll tests passed!");
     Ok(())
 }
 
-async fn test_provider(provider: &impl Provider) -> Result<()> {
+async fn test_provider(provider: &dyn Provider) -> Result<()> {
     println!("  - Provider name: {}", provider.name());
 
     // Test capabilities
@@ -43,7 +43,7 @@ async fn test_provider(provider: &impl Provider) -> Result<()> {
     let request = ChatRequest {
         messages: vec![ChatMessage {
             role: Role::User,
-            content: eye::provider::Content::Text("Hello, world!".to_string()),
+            content: Some(eye::provider::Content::Text("Hello, world!".to_string())),
             name: None,
             tool_calls: None,
             tool_call_id: None,
