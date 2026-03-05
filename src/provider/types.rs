@@ -18,14 +18,130 @@ pub enum Role {
     Tool,
 }
 
+/// Content type for chat messages
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum Content {
+    /// Simple text content
+    Text(String),
+    /// Array of content parts (for multimodal messages)
+    Parts(Vec<ContentPart>),
+}
+
+/// Content part type for multimodal messages
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContentPart {
+    /// Text content part
+    Text {
+        /// The text content
+        text: String,
+    },
+    /// Image content part
+    ImageUrl {
+        /// Image URL information
+        image_url: ImageUrl,
+    },
+    /// Audio content part
+    AudioUrl {
+        /// Audio URL information
+        audio_url: AudioUrl,
+    },
+    /// Video content part
+    VideoUrl {
+        /// Video URL information
+        video_url: VideoUrl,
+    },
+}
+
+/// Image URL information
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ImageUrl {
+    /// URL of the image
+    pub url: String,
+    /// Optional detail level
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<ImageDetail>,
+}
+
+/// Image detail level
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum ImageDetail {
+    /// Low detail (faster processing)
+    Low,
+    /// High detail (more accurate but slower)
+    High,
+    /// Auto (let the model decide)
+    Auto,
+}
+
+/// Audio URL information
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AudioUrl {
+    /// URL of the audio file
+    pub url: String,
+    /// Audio format
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<AudioFormat>,
+    /// Transcription language
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+}
+
+/// Audio format
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum AudioFormat {
+    /// MP3 format
+    Mp3,
+    /// WAV format
+    Wav,
+    /// FLAC format
+    Flac,
+    /// OGG format
+    Ogg,
+    /// AAC format
+    Aac,
+}
+
+/// Video URL information
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct VideoUrl {
+    /// URL of the video file
+    pub url: String,
+    /// Video format
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<VideoFormat>,
+    /// Whether to extract audio only
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audio_only: Option<bool>,
+}
+
+/// Video format
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum VideoFormat {
+    /// MP4 format
+    Mp4,
+    /// AVI format
+    Avi,
+    /// MOV format
+    Mov,
+    /// WebM format
+    Webm,
+    /// MKV format
+    Mkv,
+}
+
 /// Chat completion request message
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ChatMessage {
     /// Role of the message author
     pub role: Role,
-    /// Content of the message
+    /// Content of the message (can be text or multimodal parts)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub content: Option<String>,
+    pub content: Option<Content>,
     /// Optional name for the participant
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -35,6 +151,95 @@ pub struct ChatMessage {
     /// Tool call ID (required when role is tool)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+}
+
+impl ChatMessage {
+    /// Create a new text-only chat message
+    pub fn new_text(role: Role, text: impl Into<String>) -> Self {
+        Self {
+            role,
+            content: Some(Content::Text(text.into())),
+            name: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }
+    }
+
+    /// Create a new multimodal chat message
+    pub fn new_multimodal(role: Role, parts: Vec<ContentPart>) -> Self {
+        Self {
+            role,
+            content: Some(Content::Parts(parts)),
+            name: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }
+    }
+
+    /// Create a new chat message with image
+    pub fn new_with_image(role: Role, text: impl Into<String>, image_url: impl Into<String>) -> Self {
+        Self::new_multimodal(role, vec![
+            ContentPart::Text { text: text.into() },
+            ContentPart::ImageUrl { 
+                image_url: ImageUrl { 
+                    url: image_url.into(),
+                    detail: None,
+                }
+            },
+        ])
+    }
+
+    /// Create a new chat message with audio
+    pub fn new_with_audio(role: Role, text: impl Into<String>, audio_url: impl Into<String>) -> Self {
+        Self::new_multimodal(role, vec![
+            ContentPart::Text { text: text.into() },
+            ContentPart::AudioUrl { 
+                audio_url: AudioUrl { 
+                    url: audio_url.into(),
+                    format: None,
+                    language: None,
+                }
+            },
+        ])
+    }
+
+    /// Create a new chat message with video
+    pub fn new_with_video(role: Role, text: impl Into<String>, video_url: impl Into<String>) -> Self {
+        Self::new_multimodal(role, vec![
+            ContentPart::Text { text: text.into() },
+            ContentPart::VideoUrl { 
+                video_url: VideoUrl { 
+                    url: video_url.into(),
+                    format: None,
+                    audio_only: None,
+                }
+            },
+        ])
+    }
+
+    /// Check if the message contains any multimodal content
+    pub fn is_multimodal(&self) -> bool {
+        match &self.content {
+            Some(Content::Parts(_)) => true,
+            _ => false,
+        }
+    }
+
+    /// Get the text content if available
+    pub fn text_content(&self) -> Option<&str> {
+        match &self.content {
+            Some(Content::Text(text)) => Some(text),
+            Some(Content::Parts(parts)) => {
+                for part in parts {
+                    if let ContentPart::Text { text } = part {
+                        return Some(text);
+                    }
+                }
+                None
+            }
+            None => None,
+        }
+    }
 }
 
 /// Tool definition
@@ -393,6 +598,7 @@ bitflags::bitflags! {
         const FUNCTION_CALLING = 1 << 1;
         const VISION = 1 << 2;
         const AUDIO_INPUT = 1 << 3;
-        const OBJECT_GENERATION = 1 << 4; // JSON mode
+        const VIDEO_INPUT = 1 << 4;
+        const OBJECT_GENERATION = 1 << 5; // JSON mode
     }
 }

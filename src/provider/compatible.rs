@@ -352,6 +352,38 @@ impl OpenaiCompatibleProvider {
     fn convert_chat_request(&self, request: crate::provider::types::ChatRequest) -> ChatCompletionRequest {
         // Convert messages
         let messages = request.messages.into_iter().map(|msg| {
+            // Convert content
+            let content = match msg.content {
+                Some(crate::provider::types::Content::Text(text)) => Some(text),
+                Some(crate::provider::types::Content::Parts(parts)) => {
+                    // For now, extract text content from parts
+                    // TODO: Support multimodal content in OpenAI-compatible format
+                    let mut text_parts = Vec::new();
+                    for part in parts {
+                        match part {
+                            crate::provider::types::ContentPart::Text { text } => {
+                                text_parts.push(text);
+                            }
+                            crate::provider::types::ContentPart::ImageUrl { image_url } => {
+                                text_parts.push(format!("[Image: {}]", image_url.url));
+                            }
+                            crate::provider::types::ContentPart::AudioUrl { audio_url } => {
+                                text_parts.push(format!("[Audio: {}]", audio_url.url));
+                            }
+                            crate::provider::types::ContentPart::VideoUrl { video_url } => {
+                                text_parts.push(format!("[Video: {}]", video_url.url));
+                            }
+                        }
+                    }
+                    if !text_parts.is_empty() {
+                        Some(text_parts.join("\n"))
+                    } else {
+                        None
+                    }
+                }
+                None => None,
+            };
+
             ChatMessage {
                 role: match msg.role {
                     crate::provider::types::Role::System => Role::System,
@@ -359,7 +391,7 @@ impl OpenaiCompatibleProvider {
                     crate::provider::types::Role::Assistant => Role::Assistant,
                     crate::provider::types::Role::Tool => Role::Tool,
                 },
-                content: msg.content,
+                content,
                 name: msg.name,
                 tool_calls: msg.tool_calls.map(|calls| {
                     calls.into_iter().map(|call| {
@@ -456,6 +488,11 @@ impl OpenaiCompatibleProvider {
     fn convert_chat_response(&self, response: ChatCompletionResponse) -> crate::provider::types::ChatResponse {
         // Convert choices
         let choices = response.choices.into_iter().map(|choice| {
+            // Convert content
+            let content = choice.message.content.map(|text| {
+                crate::provider::types::Content::Text(text)
+            });
+
             crate::provider::types::ChatChoice {
                 index: choice.index,
                 message: crate::provider::types::ChatMessage {
@@ -465,7 +502,7 @@ impl OpenaiCompatibleProvider {
                         Role::Assistant => crate::provider::types::Role::Assistant,
                         Role::Tool => crate::provider::types::Role::Tool,
                     },
-                    content: choice.message.content,
+                    content,
                     name: choice.message.name,
                     tool_calls: choice.message.tool_calls.map(|calls| {
                         calls.into_iter().map(|call| {
@@ -532,6 +569,28 @@ impl OpenaiCompatibleProvider {
     }
 }
 
+/// Create an OpenAI-compatible provider with default endpoint
+pub fn create_openai_compatible(
+    name: impl Into<String>,
+    api_key: impl Into<String>,
+    model: impl Into<String>,
+) -> anyhow::Result<OpenaiCompatibleProvider> {
+    let name_str = name.into();
+    let endpoint = match name_str.as_str() {
+        "openai" => "https://api.openai.com/v1".to_string(),
+        "openrouter" => "https://openrouter.ai/api/v1".to_string(),
+        "deepseek" => "https://api.deepseek.com".to_string(),
+        _ => return Err(anyhow::anyhow!("Unknown provider: {}", name_str)),
+    };
+    
+    Ok(OpenaiCompatibleProvider::new(
+        name_str,
+        model.into(),
+        endpoint,
+        api_key.into(),
+    ))
+}
+
 #[async_trait::async_trait]
 impl crate::provider::Provider for OpenaiCompatibleProvider {
     fn name(&self) -> &str {
@@ -540,7 +599,7 @@ impl crate::provider::Provider for OpenaiCompatibleProvider {
 
     async fn chat(&self, request: crate::provider::types::ChatRequest) -> anyhow::Result<crate::provider::types::ChatResponse> {
         // Convert unified request to OpenAI-compatible request
-        let _openai_request = self.convert_chat_request(request);
+        let _openai_request = self.convert_chat_request(request.into());
         
         // TODO: Implement actual API call
         // For now, return a mock response
@@ -553,7 +612,7 @@ impl crate::provider::Provider for OpenaiCompatibleProvider {
                 index: 0,
                 message: crate::provider::types::ChatMessage {
                     role: crate::provider::types::Role::Assistant,
-                    content: Some("This is a mock response. Actual API call not implemented yet.".to_string()),
+                    content: Some(crate::provider::types::Content::Text("This is a mock response. Actual API call not implemented yet.".to_string())),
                     name: None,
                     tool_calls: None,
                     tool_call_id: None,

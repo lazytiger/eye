@@ -13,6 +13,7 @@ pub mod types;
 
 pub use self::types::*;
 use anyhow::{Context, Result};
+pub use compatible::create_openai_compatible;
 use futures::Stream;
 
 #[async_trait::async_trait]
@@ -22,11 +23,11 @@ pub trait Provider: Send + Sync {
 
     /// Sends a chat completion request and returns the full response.
     /// Used for non-streaming interactions.
-    async fn chat(&self, request: impl Into<ChatRequest>) -> Result<ChatResponse>;
+    async fn chat(&self, request: ChatRequest) -> Result<ChatResponse>;
 
     /// Generates embeddings for the given input text.
     /// Essential for RAG (Retrieval-Augmented Generation) features.
-    async fn embedding(&self, request: impl Into<EmbeddingRequest>) -> Result<EmbeddingResponse>;
+    async fn embedding(&self, request: EmbeddingRequest) -> Result<EmbeddingResponse>;
 
     /// Returns the capabilities of the currently configured model (e.g., vision, function calling).
     /// This helps the client know what features are available without try-and-error.

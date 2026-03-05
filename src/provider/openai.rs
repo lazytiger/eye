@@ -1003,3 +1003,220 @@ pub struct ModerationCategories {
     #[serde(rename = "violence/graphic")]
     pub violence_graphic: bool,
 }
+
+// ==========================================
+// From trait implementations for conversion
+// ==========================================
+
+impl From<CreateChatCompletionRequest> for crate::provider::types::ChatRequest {
+    fn from(req: CreateChatCompletionRequest) -> Self {
+        // Convert messages
+        let messages = req.messages.into_iter().map(|msg| {
+            match msg {
+                ChatCompletionRequestMessage::System { content, name } => {
+                    crate::provider::types::ChatMessage {
+                        role: crate::provider::types::Role::System,
+                        content: Some(crate::provider::types::Content::Text(content)),
+                        name,
+                        tool_calls: None,
+                        tool_call_id: None,
+                    }
+                }
+                ChatCompletionRequestMessage::User { content, name } => {
+                    // Convert content to unified Content type
+                    let content = match content {
+                        ChatCompletionRequestMessageContent::Text(text) => Some(crate::provider::types::Content::Text(text)),
+                        ChatCompletionRequestMessageContent::Array(parts) => {
+                            // Convert parts to unified ContentPart format
+                            let mut content_parts = Vec::new();
+                            for part in parts {
+                                match part {
+                                    ChatCompletionRequestMessageContentPart::Text { text } => {
+                                        content_parts.push(crate::provider::types::ContentPart::Text { text });
+                                    }
+                                    // TODO: Support other content types (images, audio, video)
+                                    _ => {
+                                        // Skip unsupported content types for now
+                                    }
+                                }
+                            }
+                            if !content_parts.is_empty() {
+                                Some(crate::provider::types::Content::Parts(content_parts))
+                            } else {
+                                None
+                            }
+                        }
+                    };
+
+                    crate::provider::types::ChatMessage {
+                        role: crate::provider::types::Role::User,
+                        content,
+                        name,
+                        tool_calls: None,
+                        tool_call_id: None,
+                    }
+                }
+                ChatCompletionRequestMessage::Assistant { content, name, tool_calls, refusal: _, reasoning: _ } => {
+                    let content = content.and_then(|c| match c {
+                        ChatCompletionRequestMessageContent::Text(text) => Some(crate::provider::types::Content::Text(text)),
+                        ChatCompletionRequestMessageContent::Array(parts) => {
+                            // Convert parts to unified ContentPart format
+                            let mut content_parts = Vec::new();
+                            for part in parts {
+                                match part {
+                                    ChatCompletionRequestMessageContentPart::Text { text } => {
+                                        content_parts.push(crate::provider::types::ContentPart::Text { text });
+                                    }
+                                    // TODO: Support other content types (images, audio, video)
+                                    _ => {
+                                        // Skip unsupported content types for now
+                                    }
+                                }
+                            }
+                            if !content_parts.is_empty() {
+                                Some(crate::provider::types::Content::Parts(content_parts))
+                            } else {
+                                None
+                            }
+                        }
+                    });
+                    
+                    // Convert tool calls
+                    let converted_tool_calls = tool_calls.map(|calls| {
+                        calls.into_iter().map(|call| {
+                            crate::provider::types::ToolCall {
+                                id: call.id,
+                                tool_type: call.tool_type,
+                                function: crate::provider::types::ToolCallFunction {
+                                    name: call.function.name,
+                                    arguments: call.function.arguments,
+                                },
+                            }
+                        }).collect()
+                    });
+                    
+                    crate::provider::types::ChatMessage {
+                        role: crate::provider::types::Role::Assistant,
+                        content,
+                        name,
+                        tool_calls: converted_tool_calls,
+                        tool_call_id: None,
+                    }
+                }
+                ChatCompletionRequestMessage::Tool { tool_call_id, content } => {
+                    crate::provider::types::ChatMessage {
+                        role: crate::provider::types::Role::Tool,
+                        content: Some(crate::provider::types::Content::Text(content)),
+                        name: None,
+                        tool_calls: None,
+                        tool_call_id: Some(tool_call_id),
+                    }
+                }
+            }
+        }).collect();
+        
+        // Convert tools
+        let tools = req.tools.map(|tools| {
+            tools.into_iter().map(|tool| {
+                crate::provider::types::Tool {
+                    tool_type: tool.tool_type,
+                    function: crate::provider::types::FunctionDefinition {
+                        name: tool.function.name,
+                        description: tool.function.description,
+                        parameters: tool.function.parameters,
+                        strict: tool.function.strict,
+                    },
+                }
+            }).collect()
+        });
+        
+        // Convert tool choice
+        let tool_choice = req.tool_choice.map(|choice| match choice {
+            ChatCompletionToolChoiceOption::String(s) => crate::provider::types::ToolChoice::String(s),
+            ChatCompletionToolChoiceOption::Object(obj) => crate::provider::types::ToolChoice::Object(
+                crate::provider::types::NamedToolChoice {
+                    tool_type: obj.tool_type,
+                    function: crate::provider::types::NamedToolChoiceFunction {
+                        name: obj.function.name,
+                    },
+                }
+            ),
+        });
+        
+        // Convert response format
+        let response_format = req.response_format.map(|format| match format {
+            ResponseFormat::Text => crate::provider::types::ResponseFormat::Text,
+            ResponseFormat::JsonObject => crate::provider::types::ResponseFormat::JsonObject,
+            ResponseFormat::JsonSchema { json_schema } => crate::provider::types::ResponseFormat::JsonSchema {
+                json_schema: crate::provider::types::JsonSchemaFormat {
+                    name: json_schema.name,
+                    description: json_schema.description,
+                    schema: json_schema.schema,
+                    strict: json_schema.strict,
+                },
+            },
+        });
+        
+        // Convert stop
+        let stop = req.stop.map(|stop| match stop {
+            StopConfiguration::Single(s) => crate::provider::types::Stop::Single(s),
+            StopConfiguration::Multiple(v) => crate::provider::types::Stop::Multiple(v),
+        });
+        
+        // Convert stream options
+        let stream_options = req.stream_options.map(|opts| crate::provider::types::StreamOptions {
+            include_usage: opts.include_usage,
+        });
+        
+        crate::provider::types::ChatRequest {
+            messages,
+            model: req.model,
+            temperature: req.temperature,
+            top_p: req.top_p,
+            stream: req.stream,
+            tools,
+            tool_choice,
+            max_tokens: req.max_tokens.or(req.max_completion_tokens),
+            n: req.n,
+            stop,
+            frequency_penalty: req.frequency_penalty,
+            presence_penalty: req.presence_penalty,
+            logit_bias: req.logit_bias,
+            logprobs: req.logprobs,
+            top_logprobs: req.top_logprobs,
+            seed: req.seed,
+            user: req.user,
+            response_format,
+            parallel_tool_calls: req.parallel_tool_calls,
+            stream_options,
+        }
+    }
+}
+
+impl From<CreateEmbeddingRequest> for crate::provider::types::EmbeddingRequest {
+    fn from(req: CreateEmbeddingRequest) -> Self {
+        // Convert input to Vec<String>
+        let input = match req.input {
+            EmbeddingInput::Text(text) => vec![text],
+            EmbeddingInput::Array(arr) => arr,
+            EmbeddingInput::ArrayOfArrays(arr_of_arr) => {
+                // Flatten array of arrays
+                arr_of_arr.into_iter().flatten().collect()
+            }
+        };
+        
+        // Convert encoding format
+        let encoding_format = req.encoding_format.map(|fmt| match fmt {
+            EmbeddingEncodingFormat::Float => crate::provider::types::EmbeddingEncodingFormat::Float,
+            EmbeddingEncodingFormat::Base64 => crate::provider::types::EmbeddingEncodingFormat::Base64,
+        });
+        
+        crate::provider::types::EmbeddingRequest {
+            input,
+            model: req.model,
+            encoding_format,
+            dimensions: req.dimensions,
+            user: req.user,
+        }
+    }
+}
