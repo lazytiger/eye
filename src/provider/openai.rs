@@ -1008,73 +1008,251 @@ pub struct ModerationCategories {
 // From trait implementations for conversion
 // ==========================================
 
-impl From<CreateChatCompletionRequest> for crate::provider::types::ChatRequest {
-    fn from(req: CreateChatCompletionRequest) -> Self {
+
+
+impl From<crate::provider::types::EmbeddingRequest> for CreateEmbeddingRequest {
+    fn from(req: crate::provider::types::EmbeddingRequest) -> Self {
+        // Convert input to OpenAI format
+        let input = if req.input.len() == 1 {
+            EmbeddingInput::Text(req.input[0].clone())
+        } else {
+            EmbeddingInput::Array(req.input)
+        };
+        
+        // Convert encoding format
+        let encoding_format = req.encoding_format.map(|fmt| match fmt {
+            crate::provider::types::EmbeddingEncodingFormat::Float => EmbeddingEncodingFormat::Float,
+            crate::provider::types::EmbeddingEncodingFormat::Base64 => EmbeddingEncodingFormat::Base64,
+        });
+        
+        CreateEmbeddingRequest {
+            input,
+            model: req.model,
+            encoding_format,
+            dimensions: req.dimensions,
+            user: req.user,
+        }
+    }
+}
+
+impl From<CreateChatCompletionResponse> for crate::provider::types::ChatResponse {
+    fn from(resp: CreateChatCompletionResponse) -> Self {
+        // Convert choices
+        let choices = resp.choices.into_iter().map(|choice| {
+            // Convert message
+            let message = {
+                // Convert content to unified Content type
+                let content = choice.message.content.map(|text| crate::provider::types::Content::Text(text));
+                
+                // Convert tool calls
+                let tool_calls = choice.message.tool_calls.map(|calls| {
+                    calls.into_iter().map(|call| {
+                        crate::provider::types::ToolCall {
+                            id: call.id,
+                            tool_type: call.tool_type,
+                            function: crate::provider::types::ToolCallFunction {
+                                name: call.function.name,
+                                arguments: call.function.arguments,
+                            },
+                        }
+                    }).collect()
+                });
+                
+                crate::provider::types::ChatMessage {
+                    role: crate::provider::types::Role::Assistant,
+                    content,
+                    name: None,
+                    tool_calls,
+                    tool_call_id: None,
+                }
+            };
+            
+            // Convert finish reason
+            let finish_reason = match choice.finish_reason.as_str() {
+                "stop" => crate::provider::types::FinishReason::Stop,
+                "length" => crate::provider::types::FinishReason::Length,
+                "tool_calls" => crate::provider::types::FinishReason::ToolCalls,
+                "content_filter" => crate::provider::types::FinishReason::ContentFilter,
+                "function_call" => crate::provider::types::FinishReason::FunctionCall,
+                _ => crate::provider::types::FinishReason::Stop, // Default
+            };
+            
+            // Convert logprobs
+            let logprobs = choice.logprobs.map(|logprobs| {
+                crate::provider::types::Logprobs {
+                    content: logprobs.content.map(|content| {
+                        content.into_iter().map(|c| {
+                            crate::provider::types::LogprobContent {
+                                token: c.token,
+                                logprob: c.logprob as f64,
+                                bytes: None, // OpenAI doesn't provide bytes
+                                top_logprobs: Some(c.top_logprobs.into_iter().map(|t| {
+                                    crate::provider::types::TopLogprob {
+                                        token: t.token,
+                                        logprob: t.logprob as f64,
+                                        bytes: None, // OpenAI doesn't provide bytes
+                                    }
+                                }).collect()),
+                            }
+                        }).collect()
+                    }),
+                }
+            });
+            
+            crate::provider::types::ChatChoice {
+                index: choice.index as i32,
+                message,
+                finish_reason: crate::provider::types::FinishReason::Stop,
+                logprobs,
+            }
+        }).collect();
+        
+        // Convert usage
+        let usage = resp.usage.map(|u| {
+            crate::provider::types::Usage {
+                prompt_tokens: u.prompt_tokens as i32,
+                completion_tokens: u.completion_tokens as i32,
+                total_tokens: u.total_tokens as i32,
+            }
+        });
+        
+        crate::provider::types::ChatResponse {
+            id: resp.id,
+            object: resp.object,
+            created: resp.created as i64,
+            model: resp.model,
+            choices,
+            usage,
+            system_fingerprint: resp.system_fingerprint,
+        }
+    }
+}
+
+impl From<CreateEmbeddingResponse> for crate::provider::types::EmbeddingResponse {
+    fn from(resp: CreateEmbeddingResponse) -> Self {
+        // Convert data
+        let data = resp.data.into_iter().map(|embedding| {
+            crate::provider::types::EmbeddingObject {
+                index: embedding.index as usize,
+                embedding: embedding.embedding,
+                object: embedding.object,
+            }
+        }).collect();
+        
+        // Convert usage
+        let usage = crate::provider::types::EmbeddingUsage {
+            prompt_tokens: resp.usage.prompt_tokens,
+            total_tokens: resp.usage.total_tokens,
+        };
+        
+        crate::provider::types::EmbeddingResponse {
+            object: resp.object,
+            data,
+            model: resp.model,
+            usage,
+        }
+    }
+}
+
+impl From<crate::provider::types::ChatRequest> for CreateChatCompletionRequest {
+    fn from(req: crate::provider::types::ChatRequest) -> Self {
         // Convert messages
         let messages = req.messages.into_iter().map(|msg| {
-            match msg {
-                ChatCompletionRequestMessage::System { content, name } => {
-                    crate::provider::types::ChatMessage {
-                        role: crate::provider::types::Role::System,
-                        content: Some(crate::provider::types::Content::Text(content)),
-                        name,
-                        tool_calls: None,
-                        tool_call_id: None,
-                    }
-                }
-                ChatCompletionRequestMessage::User { content, name } => {
-                    // Convert content to unified Content type
-                    let content = match content {
-                        ChatCompletionRequestMessageContent::Text(text) => Some(crate::provider::types::Content::Text(text)),
-                        ChatCompletionRequestMessageContent::Array(parts) => {
-                            // Convert parts to unified ContentPart format
-                            let mut content_parts = Vec::new();
+            match msg.role {
+                crate::provider::types::Role::System => {
+                    // Extract text content from system message
+                    let content = match msg.content {
+                        Some(crate::provider::types::Content::Text(text)) => text,
+                        Some(crate::provider::types::Content::Parts(parts)) => {
+                            // Extract text from parts
+                            let mut text_parts = Vec::new();
                             for part in parts {
                                 match part {
-                                    ChatCompletionRequestMessageContentPart::Text { text } => {
-                                        content_parts.push(crate::provider::types::ContentPart::Text { text });
+                                    crate::provider::types::ContentPart::Text { text } => {
+                                        text_parts.push(text);
                                     }
-                                    // TODO: Support other content types (images, audio, video)
                                     _ => {
-                                        // Skip unsupported content types for now
+                                        // Skip non-text parts for system messages
                                     }
                                 }
                             }
-                            if !content_parts.is_empty() {
-                                Some(crate::provider::types::Content::Parts(content_parts))
-                            } else {
-                                None
-                            }
+                            text_parts.join(" ")
                         }
+                        None => String::new(),
                     };
-
-                    crate::provider::types::ChatMessage {
-                        role: crate::provider::types::Role::User,
+                    
+                    ChatCompletionRequestMessage::System {
                         content,
-                        name,
-                        tool_calls: None,
-                        tool_call_id: None,
+                        name: msg.name,
                     }
                 }
-                ChatCompletionRequestMessage::Assistant { content, name, tool_calls, refusal: _, reasoning: _ } => {
-                    let content = content.and_then(|c| match c {
-                        ChatCompletionRequestMessageContent::Text(text) => Some(crate::provider::types::Content::Text(text)),
-                        ChatCompletionRequestMessageContent::Array(parts) => {
-                            // Convert parts to unified ContentPart format
-                            let mut content_parts = Vec::new();
+                crate::provider::types::Role::User => {
+                    // Convert content to OpenAI format
+                    let content = match msg.content {
+                        Some(crate::provider::types::Content::Text(text)) => {
+                            ChatCompletionRequestMessageContent::Text(text)
+                        }
+                        Some(crate::provider::types::Content::Parts(parts)) => {
+                            // Convert parts to OpenAI format
+                            let mut openai_parts = Vec::new();
                             for part in parts {
                                 match part {
-                                    ChatCompletionRequestMessageContentPart::Text { text } => {
-                                        content_parts.push(crate::provider::types::ContentPart::Text { text });
+                                    crate::provider::types::ContentPart::Text { text } => {
+                                        openai_parts.push(
+                                            ChatCompletionRequestMessageContentPart::Text { text }
+                                        );
                                     }
-                                    // TODO: Support other content types (images, audio, video)
+                                    crate::provider::types::ContentPart::ImageUrl { image_url } => {
+                                        openai_parts.push(
+                                            ChatCompletionRequestMessageContentPart::ImageUrl {
+                                                image_url: ChatCompletionRequestMessageContentPartImageUrl {
+                                                    url: image_url.url,
+                                                    detail: image_url.detail.map(|d| match d {
+                                                        crate::provider::types::ImageDetail::Low => ImageDetail::Low,
+                                                        crate::provider::types::ImageDetail::High => ImageDetail::High,
+                                                        crate::provider::types::ImageDetail::Auto => ImageDetail::Auto,
+                                                    }),
+                                                }
+                                            }
+                                        );
+                                    }
+                                    // TODO: Support audio and video content in OpenAI format
                                     _ => {
                                         // Skip unsupported content types for now
                                     }
                                 }
                             }
-                            if !content_parts.is_empty() {
-                                Some(crate::provider::types::Content::Parts(content_parts))
+                            ChatCompletionRequestMessageContent::Array(openai_parts)
+                        }
+                        None => ChatCompletionRequestMessageContent::Text(String::new()),
+                    };
+                    
+                    ChatCompletionRequestMessage::User {
+                        content,
+                        name: msg.name,
+                    }
+                }
+                crate::provider::types::Role::Assistant => {
+                    // Convert content to OpenAI format
+                    let content = msg.content.and_then(|c| match c {
+                        crate::provider::types::Content::Text(text) => {
+                            Some(ChatCompletionRequestMessageContent::Text(text))
+                        }
+                        crate::provider::types::Content::Parts(parts) => {
+                            // Extract text from parts for assistant messages
+                            let mut text_parts = Vec::new();
+                            for part in parts {
+                                match part {
+                                    crate::provider::types::ContentPart::Text { text } => {
+                                        text_parts.push(text);
+                                    }
+                                    _ => {
+                                        // Skip non-text parts for assistant messages
+                                    }
+                                }
+                            }
+                            if !text_parts.is_empty() {
+                                Some(ChatCompletionRequestMessageContent::Text(text_parts.join(" ")))
                             } else {
                                 None
                             }
@@ -1082,12 +1260,12 @@ impl From<CreateChatCompletionRequest> for crate::provider::types::ChatRequest {
                     });
                     
                     // Convert tool calls
-                    let converted_tool_calls = tool_calls.map(|calls| {
+                    let tool_calls = msg.tool_calls.map(|calls| {
                         calls.into_iter().map(|call| {
-                            crate::provider::types::ToolCall {
+                            ChatCompletionMessageToolCall {
                                 id: call.id,
                                 tool_type: call.tool_type,
-                                function: crate::provider::types::ToolCallFunction {
+                                function: ChatCompletionMessageToolCallFunction {
                                     name: call.function.name,
                                     arguments: call.function.arguments,
                                 },
@@ -1095,21 +1273,39 @@ impl From<CreateChatCompletionRequest> for crate::provider::types::ChatRequest {
                         }).collect()
                     });
                     
-                    crate::provider::types::ChatMessage {
-                        role: crate::provider::types::Role::Assistant,
+                    ChatCompletionRequestMessage::Assistant {
                         content,
-                        name,
-                        tool_calls: converted_tool_calls,
-                        tool_call_id: None,
+                        name: msg.name,
+                        tool_calls,
+                        refusal: None,
+                        reasoning: None,
                     }
                 }
-                ChatCompletionRequestMessage::Tool { tool_call_id, content } => {
-                    crate::provider::types::ChatMessage {
-                        role: crate::provider::types::Role::Tool,
-                        content: Some(crate::provider::types::Content::Text(content)),
-                        name: None,
-                        tool_calls: None,
-                        tool_call_id: Some(tool_call_id),
+                crate::provider::types::Role::Tool => {
+                    // Extract text content from tool message
+                    let content = match msg.content {
+                        Some(crate::provider::types::Content::Text(text)) => text,
+                        Some(crate::provider::types::Content::Parts(parts)) => {
+                            // Extract text from parts
+                            let mut text_parts = Vec::new();
+                            for part in parts {
+                                match part {
+                                    crate::provider::types::ContentPart::Text { text } => {
+                                        text_parts.push(text);
+                                    }
+                                    _ => {
+                                        // Skip non-text parts for tool messages
+                                    }
+                                }
+                            }
+                            text_parts.join(" ")
+                        }
+                        None => String::new(),
+                    };
+                    
+                    ChatCompletionRequestMessage::Tool {
+                        tool_call_id: msg.tool_call_id.unwrap_or_default(),
+                        content,
                     }
                 }
             }
@@ -1118,9 +1314,9 @@ impl From<CreateChatCompletionRequest> for crate::provider::types::ChatRequest {
         // Convert tools
         let tools = req.tools.map(|tools| {
             tools.into_iter().map(|tool| {
-                crate::provider::types::Tool {
+                ChatCompletionTool {
                     tool_type: tool.tool_type,
-                    function: crate::provider::types::FunctionDefinition {
+                    function: ChatCompletionToolFunction {
                         name: tool.function.name,
                         description: tool.function.description,
                         parameters: tool.function.parameters,
@@ -1132,91 +1328,74 @@ impl From<CreateChatCompletionRequest> for crate::provider::types::ChatRequest {
         
         // Convert tool choice
         let tool_choice = req.tool_choice.map(|choice| match choice {
-            ChatCompletionToolChoiceOption::String(s) => crate::provider::types::ToolChoice::String(s),
-            ChatCompletionToolChoiceOption::Object(obj) => crate::provider::types::ToolChoice::Object(
-                crate::provider::types::NamedToolChoice {
+            crate::provider::types::ToolChoice::String(s) => ChatCompletionToolChoiceOption::String(s),
+            crate::provider::types::ToolChoice::Object(obj) => {
+                ChatCompletionToolChoiceOption::Object(ChatCompletionNamedToolChoice {
                     tool_type: obj.tool_type,
-                    function: crate::provider::types::NamedToolChoiceFunction {
+                    function: ChatCompletionNamedToolChoiceFunction {
                         name: obj.function.name,
                     },
-                }
-            ),
+                })
+            }
         });
         
         // Convert response format
         let response_format = req.response_format.map(|format| match format {
-            ResponseFormat::Text => crate::provider::types::ResponseFormat::Text,
-            ResponseFormat::JsonObject => crate::provider::types::ResponseFormat::JsonObject,
-            ResponseFormat::JsonSchema { json_schema } => crate::provider::types::ResponseFormat::JsonSchema {
-                json_schema: crate::provider::types::JsonSchemaFormat {
-                    name: json_schema.name,
-                    description: json_schema.description,
-                    schema: json_schema.schema,
-                    strict: json_schema.strict,
-                },
-            },
+            crate::provider::types::ResponseFormat::Text => ResponseFormat::Text,
+            crate::provider::types::ResponseFormat::JsonObject => ResponseFormat::JsonObject,
+            crate::provider::types::ResponseFormat::JsonSchema { json_schema } => {
+                ResponseFormat::JsonSchema {
+                    json_schema: JsonSchemaFormat {
+                        name: json_schema.name,
+                        description: json_schema.description,
+                        schema: json_schema.schema,
+                        strict: json_schema.strict,
+                    },
+                }
+            }
         });
         
-        // Convert stop
-        let stop = req.stop.map(|stop| match stop {
-            StopConfiguration::Single(s) => crate::provider::types::Stop::Single(s),
-            StopConfiguration::Multiple(v) => crate::provider::types::Stop::Multiple(v),
-        });
-        
-        // Convert stream options
-        let stream_options = req.stream_options.map(|opts| crate::provider::types::StreamOptions {
-            include_usage: opts.include_usage,
-        });
-        
-        crate::provider::types::ChatRequest {
+        CreateChatCompletionRequest {
             messages,
             model: req.model,
-            temperature: req.temperature,
-            top_p: req.top_p,
-            stream: req.stream,
-            tools,
-            tool_choice,
-            max_tokens: req.max_tokens.or(req.max_completion_tokens),
-            n: req.n,
-            stop,
+            modalities: None, // TODO: Support modalities
+            reasoning_effort: None, // TODO: Support reasoning effort
+            max_completion_tokens: req.max_tokens.map(|t| t as i32),
             frequency_penalty: req.frequency_penalty,
             presence_penalty: req.presence_penalty,
-            logit_bias: req.logit_bias,
-            logprobs: req.logprobs,
-            top_logprobs: req.top_logprobs,
-            seed: req.seed,
-            user: req.user,
+            web_search_options: None, // TODO: Support web search
+            top_logprobs: req.top_logprobs.map(|t| t as i32),
             response_format,
+            audio: None, // TODO: Support audio output
+            store: None, // TODO: Support store
+            stream: req.stream,
+            stop: req.stop.map(|stop| match stop {
+                crate::provider::types::Stop::Single(s) => StopConfiguration::Single(s),
+                crate::provider::types::Stop::Multiple(arr) => StopConfiguration::Multiple(arr),
+            }),
+            logit_bias: req.logit_bias.map(|bias| {
+                bias.into_iter().map(|(k, v)| (k, v as i32)).collect()
+            }),
+            logprobs: req.logprobs,
+            max_tokens: req.max_tokens.map(|t| t as i32),
+            n: req.n.map(|n| n as i32),
+            prediction: None, // TODO: Support prediction
+            seed: req.seed.map(|s| s as i64),
+            stream_options: req.stream_options.map(|options| {
+                ChatCompletionStreamOptions {
+                    include_usage: options.include_usage,
+                }
+            }),
+            tools,
+            tool_choice,
             parallel_tool_calls: req.parallel_tool_calls,
-            stream_options,
+            function_call: None, // Deprecated
+            functions: None, // Deprecated
+            temperature: req.temperature,
+            top_p: req.top_p,
+            user: req.user,
+            session_id: None, // TODO: Support session ID
         }
     }
 }
 
-impl From<CreateEmbeddingRequest> for crate::provider::types::EmbeddingRequest {
-    fn from(req: CreateEmbeddingRequest) -> Self {
-        // Convert input to Vec<String>
-        let input = match req.input {
-            EmbeddingInput::Text(text) => vec![text],
-            EmbeddingInput::Array(arr) => arr,
-            EmbeddingInput::ArrayOfArrays(arr_of_arr) => {
-                // Flatten array of arrays
-                arr_of_arr.into_iter().flatten().collect()
-            }
-        };
-        
-        // Convert encoding format
-        let encoding_format = req.encoding_format.map(|fmt| match fmt {
-            EmbeddingEncodingFormat::Float => crate::provider::types::EmbeddingEncodingFormat::Float,
-            EmbeddingEncodingFormat::Base64 => crate::provider::types::EmbeddingEncodingFormat::Base64,
-        });
-        
-        crate::provider::types::EmbeddingRequest {
-            input,
-            model: req.model,
-            encoding_format,
-            dimensions: req.dimensions,
-            user: req.user,
-        }
-    }
-}

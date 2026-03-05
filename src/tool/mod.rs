@@ -80,5 +80,11 @@ pub trait Tool: Send + Sync {
 /// Shell tool for executing commands
 pub mod shell;
 
+/// Time tool for getting current local time
+pub mod time;
+
 /// Re-export shell tool
 pub use shell::ShellTool;
+
+/// Re-export time tool
+pub use time::TimeTool;
