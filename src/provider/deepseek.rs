@@ -236,96 +236,76 @@ struct Usage {
 
 impl From<crate::provider::types::ChatRequest> for DeepSeekRequest {
     fn from(req: crate::provider::types::ChatRequest) -> Self {
-        // Convert messages
+        // Convert messages from new enum-based ChatMessage
         let messages = req
             .messages
             .into_iter()
             .map(|msg| {
-                match msg.role {
-                    crate::provider::types::Role::System => {
+                match msg {
+                    crate::provider::types::ChatMessage::System(s) => {
                         // Extract text content from system message
-                        let content = match msg.content {
-                            Some(crate::provider::types::Content::Text(text)) => text,
-                            Some(crate::provider::types::Content::Parts(parts)) => {
-                                // Extract text from parts
+                        let content = match s.content {
+                            crate::provider::types::MessageContent::Text(text) => text,
+                            crate::provider::types::MessageContent::Parts(parts) => {
                                 let mut text_parts = Vec::new();
                                 for part in parts {
                                     match part {
                                         crate::provider::types::ContentPart::Text { text } => {
                                             text_parts.push(text);
                                         }
-                                        _ => {
-                                            // Skip non-text parts for system messages
-                                            // DeepSeek doesn't support multimodal input
-                                        }
+                                        _ => {}
                                     }
                                 }
                                 text_parts.join(" ")
                             }
-                            None => String::new(),
                         };
 
                         Message::System {
                             content,
-                            name: msg.name,
+                            name: s.name,
                         }
                     }
-                    crate::provider::types::Role::User => {
-                        // Extract text content from user message
-                        // DeepSeek doesn't support multimodal input, so we extract text only
-                        let content = match msg.content {
-                            Some(crate::provider::types::Content::Text(text)) => text,
-                            Some(crate::provider::types::Content::Parts(parts)) => {
-                                // Extract text from parts
+                    crate::provider::types::ChatMessage::User(u) => {
+                        let content = match u.content {
+                            crate::provider::types::MessageContent::Text(text) => text,
+                            crate::provider::types::MessageContent::Parts(parts) => {
                                 let mut text_parts = Vec::new();
                                 for part in parts {
                                     match part {
                                         crate::provider::types::ContentPart::Text { text } => {
                                             text_parts.push(text);
                                         }
-                                        _ => {
-                                            // Skip non-text parts
-                                            // DeepSeek doesn't support multimodal input
-                                        }
+                                        _ => {}
                                     }
                                 }
                                 text_parts.join(" ")
                             }
-                            None => String::new(),
                         };
 
                         Message::User {
                             content,
-                            name: msg.name,
+                            name: u.name,
                         }
                     }
-                    crate::provider::types::Role::Assistant => {
-                        // Extract text content from assistant message
-                        let content = msg.content.and_then(|c| match c {
-                            crate::provider::types::Content::Text(text) => Some(text),
-                            crate::provider::types::Content::Parts(parts) => {
-                                // Extract text from parts
+                    crate::provider::types::ChatMessage::Assistant(a) => {
+                        let content = a.content.map(|c| match c {
+                            crate::provider::types::MessageContent::Text(text) => text,
+                            crate::provider::types::MessageContent::Parts(parts) => {
                                 let mut text_parts = Vec::new();
                                 for part in parts {
                                     match part {
                                         crate::provider::types::ContentPart::Text { text } => {
                                             text_parts.push(text);
                                         }
-                                        _ => {
-                                            // Skip non-text parts
-                                        }
+                                        _ => {}
                                     }
                                 }
-                                if !text_parts.is_empty() {
-                                    Some(text_parts.join(" "))
-                                } else {
-                                    None
-                                }
+                                text_parts.join(" ")
                             }
                         });
 
                         // Convert tool calls
-                        let tool_calls = msg.tool_calls.map(|calls| {
+                        let tool_calls = a.tool_calls.map(|calls| {
                             calls
                                 .into_iter()
                                 .map(|call| ToolCall {
@@ -341,36 +321,31 @@ impl From<crate::provider::types::ChatRequest> for DeepSeekRequest {
 
                         Message::Assistant {
                             content,
-                            name: msg.name,
+                            name: a.name,
                             tool_calls,
                             prefix: None,
                             reasoning_content: None,
                         }
                     }
-                    crate::provider::types::Role::Tool => {
-                        // Extract text content from tool message
-                        let content = match msg.content {
-                            Some(crate::provider::types::Content::Text(text)) => text,
-                            Some(crate::provider::types::Content::Parts(parts)) => {
-                                // Extract text from parts
+                    crate::provider::types::ChatMessage::Tool(t) => {
+                        let content = match t.content {
+                            crate::provider::types::MessageContent::Text(text) => text,
+                            crate::provider::types::MessageContent::Parts(parts) => {
                                 let mut text_parts = Vec::new();
                                 for part in parts {
                                     match part {
                                         crate::provider::types::ContentPart::Text { text } => {
                                             text_parts.push(text);
                                         }
-                                        _ => {
-                                            // Skip non-text parts
-                                        }
+                                        _ => {}
                                     }
                                 }
                                 text_parts.join(" ")
                             }
-                            None => String::new(),
                         };
 
                         Message::Tool {
-                            tool_call_id: msg.tool_call_id.unwrap_or_default(),
+                            tool_call_id: t.tool_call_id,
                             content,
                         }
                     }
@@ -389,7 +364,6 @@ impl From<crate::provider::types::ChatRequest> for DeepSeekRequest {
                             name: tool.function.name,
                             description: tool.function.description,
                             parameters: Some(tool.function.parameters),
-                            // strict field not supported by DeepSeek
                         },
                     }
                 })
@@ -398,13 +372,13 @@ impl From<crate::provider::types::ChatRequest> for DeepSeekRequest {
 
         // Convert tool choice
         let tool_choice = req.tool_choice.map(|choice| match choice {
-            crate::provider::types::ToolChoice::String(s) => match s.as_str() {
+            crate::provider::types::ToolChoice::Auto(s) => match s.as_str() {
                 "none" => ToolChoice::Mode(ToolChoiceMode::None),
                 "auto" => ToolChoice::Mode(ToolChoiceMode::Auto),
                 "required" => ToolChoice::Mode(ToolChoiceMode::Required),
-                _ => ToolChoice::Mode(ToolChoiceMode::Auto), // Default to auto
+                _ => ToolChoice::Mode(ToolChoiceMode::Auto),
             },
-            crate::provider::types::ToolChoice::Object(obj) => {
+            crate::provider::types::ToolChoice::Named(obj) => {
                 ToolChoice::Specific(ToolChoiceSpecific {
                     type_: ToolType::Function,
                     function: FunctionName {
@@ -422,8 +396,7 @@ impl From<crate::provider::types::ChatRequest> for DeepSeekRequest {
             crate::provider::types::ResponseFormat::JsonObject => ResponseFormat {
                 type_: ResponseFormatType::JsonObject,
             },
-            crate::provider::types::ResponseFormat::JsonSchema { json_schema: _ } => {
-                // DeepSeek doesn't support JsonSchema, so we default to JsonObject
+            crate::provider::types::ResponseFormat::JsonSchema { .. } => {
                 ResponseFormat {
                     type_: ResponseFormatType::JsonObject,
                 }
@@ -436,11 +409,11 @@ impl From<crate::provider::types::ChatRequest> for DeepSeekRequest {
             crate::provider::types::Stop::Multiple(arr) => Stop::Array(arr),
         });
 
-        // Convert model (assuming DeepSeek model)
-        let model = match req.model.as_str() {
+        // Convert model
+        let model = match req.model.as_deref().unwrap_or("deepseek-chat") {
             "deepseek-chat" => DeepSeekModel::DeepSeekChat,
             "deepseek-reasoner" => DeepSeekModel::DeepSeekReasoner,
-            _ => DeepSeekModel::DeepSeekChat, // Default
+            _ => DeepSeekModel::DeepSeekChat,
         };
 
         DeepSeekRequest {
@@ -452,17 +425,13 @@ impl From<crate::provider::types::ChatRequest> for DeepSeekRequest {
             response_format,
             stop,
             stream: req.stream,
-            stream_options: req.stream_options.map(|options| StreamOptions {
-                include_usage: options.include_usage,
-            }),
+            stream_options: None,
             temperature: req.temperature,
             top_p: req.top_p,
             tools,
             tool_choice,
-            // logit_bias not supported by DeepSeek
             logprobs: req.logprobs,
             top_logprobs: req.top_logprobs.map(|t| t as u8),
-            // n, seed, user, parallel_tool_calls not supported by DeepSeek
             thinking: None,
         }
     }
@@ -512,7 +481,7 @@ impl crate::provider::Provider for DeepseekProvider {
         &self,
         mut request: crate::provider::types::ChatRequest,
     ) -> anyhow::Result<crate::provider::types::ChatResponse> {
-        request.model = self.model.clone();
+        request.model = Some(self.model.clone());
         let url = format!("{}/chat/completions", self.base_url);
         call_chat_completions::<DeepSeekRequest, DeepSeekResponse>(&url, &self.api_key, request)
             .await
@@ -527,22 +496,15 @@ impl crate::provider::Provider for DeepseekProvider {
         Err(anyhow::anyhow!("DeepSeek does not support embeddings API"))
     }
 
-    fn capabilities(&self) -> crate::provider::types::ModelCapabilities {
+    fn capabilities(&self) -> crate::provider::types::ProviderCapabilities {
         // DeepSeek models have specific capabilities
-        let _model_lower = self.model.to_lowercase();
-        let mut capabilities = crate::provider::types::ModelCapabilities::TEXT_GENERATION;
+        let mut capabilities = crate::provider::types::ProviderCapabilities::CHAT;
 
         // DeepSeek models support function calling
-        capabilities |= crate::provider::types::ModelCapabilities::FUNCTION_CALLING;
+        capabilities |= crate::provider::types::ProviderCapabilities::FUNCTION_CALLING;
 
-        // DeepSeek Reasoner has reasoning capabilities
-        // Note: REASONING capability is not defined in ModelCapabilities
-        // if model_lower.contains("reasoner") {
-        //     capabilities |= crate::provider::types::ModelCapabilities::REASONING;
-        // }
-
-        // DeepSeek doesn't support vision, audio, or JSON object generation
-        // (as of the knowledge cutoff date)
+        // DeepSeek supports streaming
+        capabilities |= crate::provider::types::ProviderCapabilities::STREAMING;
 
         capabilities
     }
@@ -560,18 +522,16 @@ impl From<DeepSeekResponse> for crate::provider::types::ChatResponse {
             .choices
             .into_iter()
             .map(|choice| {
-                // Convert message
+                // Convert message - use new AssistantMessage type
                 let message = match choice.message {
                     Message::Assistant {
                         content,
                         name,
                         tool_calls,
-                        prefix: _,
-                        reasoning_content: _,
+                        ..
                     } => {
-                        // Convert content to unified Content type
-                        let content =
-                            content.map(|text| crate::provider::types::Content::Text(text));
+                        // Convert content to new MessageContent type
+                        let content = content.map(|text| crate::provider::types::MessageContent::Text(text));
 
                         // Convert tool calls
                         let tool_calls = tool_calls.map(|calls| {
@@ -579,10 +539,8 @@ impl From<DeepSeekResponse> for crate::provider::types::ChatResponse {
                                 .into_iter()
                                 .map(|call| crate::provider::types::ToolCall {
                                     id: call.id,
-                                    tool_type: match call.type_ {
-                                        ToolType::Function => "function".to_string(),
-                                    },
-                                    function: crate::provider::types::ToolCallFunction {
+                                    type_: crate::provider::types::ToolType::Function,
+                                    function: crate::provider::types::FunctionCall {
                                         name: call.function.name,
                                         arguments: call.function.arguments,
                                     },
@@ -590,35 +548,32 @@ impl From<DeepSeekResponse> for crate::provider::types::ChatResponse {
                                 .collect()
                         });
 
-                        crate::provider::types::ChatMessage {
-                            role: crate::provider::types::Role::Assistant,
+                        crate::provider::types::AssistantMessage {
                             content,
                             name,
                             tool_calls,
-                            tool_call_id: None,
+                            refusal: None,
                         }
                     }
                     _ => {
-                        // Should not happen for assistant messages
-                        crate::provider::types::ChatMessage {
-                            role: crate::provider::types::Role::Assistant,
+                        crate::provider::types::AssistantMessage {
                             content: None,
                             name: None,
                             tool_calls: None,
-                            tool_call_id: None,
+                            refusal: None,
                         }
                     }
                 };
 
-                // Convert finish reason (currently unused, but kept for future use)
-                let _finish_reason = choice.finish_reason.map(|r| match r.as_str() {
+                // Convert finish reason
+                let finish_reason = choice.finish_reason.map(|r| match r.as_str() {
                     "stop" => crate::provider::types::FinishReason::Stop,
                     "length" => crate::provider::types::FinishReason::Length,
                     "tool_calls" => crate::provider::types::FinishReason::ToolCalls,
                     "content_filter" => crate::provider::types::FinishReason::ContentFilter,
                     "function_call" => crate::provider::types::FinishReason::FunctionCall,
-                    _ => crate::provider::types::FinishReason::Stop, // Default
-                });
+                    _ => crate::provider::types::FinishReason::Stop,
+                }).unwrap_or(crate::provider::types::FinishReason::Stop);
 
                 // Convert logprobs
                 let logprobs = choice
@@ -627,21 +582,17 @@ impl From<DeepSeekResponse> for crate::provider::types::ChatResponse {
                         content: logprobs.content.map(|content| {
                             content
                                 .into_iter()
-                                .map(|c| crate::provider::types::LogprobContent {
+                                .map(|c| crate::provider::types::TokenLogprob {
                                     token: c.token,
                                     logprob: c.logprob,
-                                    bytes: c
-                                        .bytes
-                                        .map(|bytes| bytes.into_iter().map(|b| b as i32).collect()),
+                                    bytes: c.bytes.map(|bytes| bytes.into_iter().map(|b| b as u8).collect()),
                                     top_logprobs: Some(
                                         c.top_logprobs
                                             .into_iter()
                                             .map(|t| crate::provider::types::TopLogprob {
                                                 token: t.token,
                                                 logprob: t.logprob,
-                                                bytes: t.bytes.map(|bytes| {
-                                                    bytes.into_iter().map(|b| b as i32).collect()
-                                                }),
+                                                bytes: t.bytes.map(|bytes| bytes.into_iter().map(|b| b as u8).collect()),
                                             })
                                             .collect(),
                                     ),
@@ -651,9 +602,9 @@ impl From<DeepSeekResponse> for crate::provider::types::ChatResponse {
                     });
 
                 crate::provider::types::ChatChoice {
-                    index: choice.index as i32,
+                    index: choice.index as u32,
                     message,
-                    finish_reason: crate::provider::types::FinishReason::Stop,
+                    finish_reason,
                     logprobs,
                 }
             })
@@ -661,15 +612,17 @@ impl From<DeepSeekResponse> for crate::provider::types::ChatResponse {
 
         // Convert usage
         let usage = resp.usage.map(|u| crate::provider::types::Usage {
-            prompt_tokens: u.prompt_tokens as i32,
-            completion_tokens: u.completion_tokens as i32,
-            total_tokens: u.total_tokens as i32,
+            prompt_tokens: u.prompt_tokens as u32,
+            completion_tokens: u.completion_tokens as u32,
+            total_tokens: u.total_tokens as u32,
+            prompt_tokens_details: None,
+            completion_tokens_details: None,
         });
 
         crate::provider::types::ChatResponse {
             id: resp.id,
             object: resp.object,
-            created: resp.created as i64,
+            created: resp.created as u64,
             model: resp.model,
             choices,
             usage,

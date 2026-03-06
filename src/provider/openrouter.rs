@@ -441,16 +441,14 @@ pub struct Activity {
 
 impl From<crate::provider::types::EmbeddingRequest> for EmbeddingsRequest {
     fn from(req: crate::provider::types::EmbeddingRequest) -> Self {
-        // Convert input to OpenRouter format (JSON Value)
-        let input = if req.input.len() == 1 {
-            serde_json::Value::String(req.input[0].clone())
-        } else {
-            serde_json::Value::Array(
-                req.input
-                    .into_iter()
-                    .map(serde_json::Value::String)
-                    .collect(),
-            )
+        // Convert input from EmbeddingInput enum to OpenRouter format
+        let input = match req.input {
+            crate::provider::types::EmbeddingInput::String(s) => {
+                serde_json::Value::String(s)
+            }
+            crate::provider::types::EmbeddingInput::StringArray(arr) => {
+                serde_json::Value::Array(arr.into_iter().map(serde_json::Value::String).collect())
+            }
         };
 
         // Convert encoding format
@@ -465,7 +463,7 @@ impl From<crate::provider::types::EmbeddingRequest> for EmbeddingsRequest {
             encoding_format,
             dimensions: req.dimensions.map(|d| d as u32),
             user: req.user,
-            provider: None, // Let OpenRouter choose the provider
+            provider: None,
         }
     }
 }
@@ -514,32 +512,30 @@ impl crate::provider::Provider for OpenrouterProvider {
         &self,
         mut request: crate::provider::types::ChatRequest,
     ) -> anyhow::Result<crate::provider::types::ChatResponse> {
-        request.model = self.model.clone();
+        request.model = Some(self.model.clone());
         let url = format!("{}/chat/completions", self.base_url);
         call_chat_completions::<ChatRequest, ChatResponse>(&url, &self.api_key, request).await
     }
 
     async fn embedding(
         &self,
-        mut request: crate::provider::types::EmbeddingRequest,
+        request: crate::provider::types::EmbeddingRequest,
     ) -> anyhow::Result<crate::provider::types::EmbeddingResponse> {
-        request.model = self.model.clone();
         let url = format!("{}/embeddings", self.base_url);
         call_embedding::<EmbeddingsRequest, EmbeddingsResponse>(&url, &self.api_key, request).await
     }
 
-    fn capabilities(&self) -> crate::provider::types::ModelCapabilities {
+    fn capabilities(&self) -> crate::provider::types::ProviderCapabilities {
         // OpenRouter supports many models with different capabilities
-        // For now, assume basic text generation and function calling
         let model_lower = self.model.to_lowercase();
-        let mut capabilities = crate::provider::types::ModelCapabilities::TEXT_GENERATION;
+        let mut capabilities = crate::provider::types::ProviderCapabilities::CHAT;
 
         // Most models on OpenRouter support function calling
         if model_lower.contains("gpt")
             || model_lower.contains("claude")
             || model_lower.contains("gemini")
         {
-            capabilities |= crate::provider::types::ModelCapabilities::FUNCTION_CALLING;
+            capabilities |= crate::provider::types::ProviderCapabilities::FUNCTION_CALLING;
         }
 
         // Check for vision capabilities
@@ -547,18 +543,21 @@ impl crate::provider::Provider for OpenrouterProvider {
             || model_lower.contains("gpt-4-vision")
             || model_lower.contains("claude-3")
         {
-            capabilities |= crate::provider::types::ModelCapabilities::VISION;
+            capabilities |= crate::provider::types::ProviderCapabilities::VISION;
         }
 
         // Check for audio capabilities
         if model_lower.contains("whisper") || model_lower.contains("audio") {
-            capabilities |= crate::provider::types::ModelCapabilities::AUDIO_INPUT;
+            capabilities |= crate::provider::types::ProviderCapabilities::AUDIO_INPUT;
         }
 
         // Check for JSON/object generation
         if model_lower.contains("json") {
-            capabilities |= crate::provider::types::ModelCapabilities::OBJECT_GENERATION;
+            capabilities |= crate::provider::types::ProviderCapabilities::JSON_MODE;
         }
+
+        // OpenRouter supports streaming
+        capabilities |= crate::provider::types::ProviderCapabilities::STREAMING;
 
         capabilities
     }
@@ -602,17 +601,15 @@ impl crate::provider::Provider for OpenrouterProvider {
 
 impl From<crate::provider::types::ChatRequest> for ChatRequest {
     fn from(req: crate::provider::types::ChatRequest) -> Self {
-        // Convert messages
+        // Convert messages from new enum-based ChatMessage
         let messages = req.messages.into_iter().map(|msg| {
-            match msg.role {
-                crate::provider::types::Role::System => {
-                    // Extract text content from system message
-                    let content = match msg.content {
-                        Some(crate::provider::types::Content::Text(text)) => {
+            match msg {
+                crate::provider::types::ChatMessage::System(s) => {
+                    let content = match s.content {
+                        crate::provider::types::MessageContent::Text(text) => {
                             MessageContent::Text(text)
                         }
-                        Some(crate::provider::types::Content::Parts(parts)) => {
-                            // Convert parts to OpenRouter format
+                        crate::provider::types::MessageContent::Parts(parts) => {
                             let mut openrouter_parts = Vec::new();
                             for part in parts {
                                 match part {
@@ -631,35 +628,24 @@ impl From<crate::provider::types::ChatRequest> for ChatRequest {
                                             }
                                         });
                                     }
-                                    crate::provider::types::ContentPart::AudioUrl { audio_url: _ } => {
-                                        // Convert audio URL to OpenRouter's InputAudio format
-                                        // Note: OpenRouter uses base64 encoded audio data, not URLs
-                                        // For now, we'll skip audio content
-                                    }
-                                    crate::provider::types::ContentPart::VideoUrl { video_url: _ } => {
-                                        // OpenRouter doesn't support video input
-                                        // Skip video content
-                                    }
+                                    _ => {}
                                 }
                             }
                             MessageContent::Parts(openrouter_parts)
                         }
-                        None => MessageContent::Text(String::new()),
                     };
 
                     Message::System(SystemMessage {
                         content,
-                        name: msg.name,
+                        name: s.name,
                     })
                 }
-                crate::provider::types::Role::User => {
-                    // Convert content to OpenRouter format
-                    let content = match msg.content {
-                        Some(crate::provider::types::Content::Text(text)) => {
+                crate::provider::types::ChatMessage::User(u) => {
+                    let content = match u.content {
+                        crate::provider::types::MessageContent::Text(text) => {
                             MessageContent::Text(text)
                         }
-                        Some(crate::provider::types::Content::Parts(parts)) => {
-                            // Convert parts to OpenRouter format
+                        crate::provider::types::MessageContent::Parts(parts) => {
                             let mut openrouter_parts = Vec::new();
                             for part in parts {
                                 match part {
@@ -678,60 +664,42 @@ impl From<crate::provider::types::ChatRequest> for ChatRequest {
                                             }
                                         });
                                     }
-                                    crate::provider::types::ContentPart::AudioUrl { audio_url: _ } => {
-                                        // Convert audio URL to OpenRouter's InputAudio format
-                                        // Note: OpenRouter uses base64 encoded audio data, not URLs
-                                        // For now, we'll skip audio content
-                                    }
-                                    crate::provider::types::ContentPart::VideoUrl { video_url: _ } => {
-                                        // OpenRouter doesn't support video input
-                                        // Skip video content
-                                    }
+                                    _ => {}
                                 }
                             }
                             MessageContent::Parts(openrouter_parts)
                         }
-                        None => MessageContent::Text(String::new()),
                     };
 
                     Message::User(UserMessage {
                         content,
-                        name: msg.name,
+                        name: u.name,
                     })
                 }
-                crate::provider::types::Role::Assistant => {
-                    // Convert content to OpenRouter format
-                    let content = msg.content.and_then(|c| match c {
-                        crate::provider::types::Content::Text(text) => {
-                            Some(MessageContent::Text(text))
+                crate::provider::types::ChatMessage::Assistant(a) => {
+                    let content = a.content.map(|c| match c {
+                        crate::provider::types::MessageContent::Text(text) => {
+                            MessageContent::Text(text)
                         }
-                        crate::provider::types::Content::Parts(parts) => {
-                            // Extract text from parts for assistant messages
+                        crate::provider::types::MessageContent::Parts(parts) => {
                             let mut text_parts = Vec::new();
                             for part in parts {
                                 match part {
                                     crate::provider::types::ContentPart::Text { text } => {
                                         text_parts.push(text);
                                     }
-                                    _ => {
-                                        // Skip non-text parts for assistant messages
-                                    }
+                                    _ => {}
                                 }
                             }
-                            if !text_parts.is_empty() {
-                                Some(MessageContent::Text(text_parts.join(" ")))
-                            } else {
-                                None
-                            }
+                            MessageContent::Text(text_parts.join(" "))
                         }
                     });
 
-                    // Convert tool calls
-                    let tool_calls = msg.tool_calls.map(|calls| {
+                    let tool_calls = a.tool_calls.map(|calls| {
                         calls.into_iter().map(|call| {
                             ToolCall {
                                 id: call.id,
-                                type_: call.tool_type,
+                                type_: "function".to_string(),
                                 function: FunctionCall {
                                     name: call.function.name,
                                     arguments: call.function.arguments,
@@ -742,38 +710,33 @@ impl From<crate::provider::types::ChatRequest> for ChatRequest {
 
                     Message::Assistant(AssistantMessage {
                         content,
-                        name: msg.name,
+                        name: a.name,
                         tool_calls,
                         refusal: None,
                     })
                 }
-                crate::provider::types::Role::Tool => {
-                    // Extract text content from tool message
-                    let content = match msg.content {
-                        Some(crate::provider::types::Content::Text(text)) => {
+                crate::provider::types::ChatMessage::Tool(t) => {
+                    let content = match t.content {
+                        crate::provider::types::MessageContent::Text(text) => {
                             MessageContent::Text(text)
                         }
-                        Some(crate::provider::types::Content::Parts(parts)) => {
-                            // Extract text from parts
+                        crate::provider::types::MessageContent::Parts(parts) => {
                             let mut text_parts = Vec::new();
                             for part in parts {
                                 match part {
                                     crate::provider::types::ContentPart::Text { text } => {
                                         text_parts.push(text);
                                     }
-                                    _ => {
-                                        // Skip non-text parts for tool messages
-                                    }
+                                    _ => {}
                                 }
                             }
                             MessageContent::Text(text_parts.join(" "))
                         }
-                        None => MessageContent::Text(String::new()),
                     };
 
                     Message::Tool(ToolResponseMessage {
                         content,
-                        tool_call_id: msg.tool_call_id.unwrap_or_default(),
+                        tool_call_id: t.tool_call_id,
                     })
                 }
             }
@@ -784,7 +747,7 @@ impl From<crate::provider::types::ChatRequest> for ChatRequest {
             tools
                 .into_iter()
                 .map(|tool| Tool {
-                    type_: tool.tool_type,
+                    type_: "function".to_string(),
                     function: FunctionDefinition {
                         name: tool.function.name,
                         description: tool.function.description,
@@ -797,10 +760,10 @@ impl From<crate::provider::types::ChatRequest> for ChatRequest {
 
         // Convert tool choice
         let tool_choice = req.tool_choice.map(|choice| match choice {
-            crate::provider::types::ToolChoice::String(s) => ToolChoice::String(s),
-            crate::provider::types::ToolChoice::Object(obj) => {
+            crate::provider::types::ToolChoice::Auto(s) => ToolChoice::String(s),
+            crate::provider::types::ToolChoice::Named(obj) => {
                 ToolChoice::Object(ToolChoiceObject {
-                    type_: obj.tool_type,
+                    type_: "function".to_string(),
                     function: ToolChoiceFunction {
                         name: obj.function.name,
                     },
@@ -832,7 +795,7 @@ impl From<crate::provider::types::ChatRequest> for ChatRequest {
 
         ChatRequest {
             messages,
-            model: Some(req.model),
+            model: req.model,
             models: None,
             response_format,
             stop,
@@ -860,7 +823,6 @@ impl From<crate::provider::types::ChatRequest> for ChatRequest {
             plugins: None,
             session_id: None,
             metadata: None,
-            // parallel_tool_calls and stream_options not supported by OpenRouter
         }
     }
 }
@@ -872,45 +834,37 @@ impl From<ChatResponse> for crate::provider::types::ChatResponse {
             .choices
             .into_iter()
             .map(|choice| {
-                // Convert message
+                // Convert message - use new AssistantMessage type
                 let message = {
-                    // Convert content to unified Content type
+                    // Convert content to new MessageContent type
                     let content = choice.message.content.map(|c| match c {
-                        MessageContent::Text(text) => crate::provider::types::Content::Text(text),
+                        MessageContent::Text(text) => crate::provider::types::MessageContent::Text(text),
                         MessageContent::Parts(parts) => {
-                            // Convert parts to unified ContentPart format
                             let mut content_parts = Vec::new();
                             for part in parts {
                                 match part {
                                     ContentPart::Text { text } => {
-                                        content_parts.push(
-                                            crate::provider::types::ContentPart::Text { text },
-                                        );
+                                        content_parts.push(crate::provider::types::ContentPart::Text { text });
                                     }
                                     ContentPart::ImageUrl { image_url } => {
-                                        content_parts.push(
-                                            crate::provider::types::ContentPart::ImageUrl {
-                                                image_url: crate::provider::types::ImageUrl {
-                                                    url: image_url.url,
-                                                    detail: image_url.detail.map(|d| {
-                                                        match d.as_str() {
-                                                "low" => crate::provider::types::ImageDetail::Low,
-                                                "high" => crate::provider::types::ImageDetail::High,
-                                                "auto" => crate::provider::types::ImageDetail::Auto,
-                                                _ => crate::provider::types::ImageDetail::Auto,
-                                            }
-                                                    }),
-                                                },
+                                        content_parts.push(crate::provider::types::ContentPart::ImageUrl {
+                                            image_url: crate::provider::types::ImageUrl {
+                                                url: image_url.url,
+                                                detail: image_url.detail.map(|d| {
+                                                    match d.as_str() {
+                                                        "low" => crate::provider::types::ImageDetail::Low,
+                                                        "high" => crate::provider::types::ImageDetail::High,
+                                                        "auto" => crate::provider::types::ImageDetail::Auto,
+                                                        _ => crate::provider::types::ImageDetail::Auto,
+                                                    }
+                                                }),
                                             },
-                                        );
+                                        });
                                     }
-                                    // TODO: Support other content types (audio, video)
-                                    _ => {
-                                        // Skip unsupported content types for now
-                                    }
+                                    _ => {}
                                 }
                             }
-                            crate::provider::types::Content::Parts(content_parts)
+                            crate::provider::types::MessageContent::Parts(content_parts)
                         }
                     });
 
@@ -920,8 +874,8 @@ impl From<ChatResponse> for crate::provider::types::ChatResponse {
                             .into_iter()
                             .map(|call| crate::provider::types::ToolCall {
                                 id: call.id,
-                                tool_type: call.type_,
-                                function: crate::provider::types::ToolCallFunction {
+                                type_: crate::provider::types::ToolType::Function,
+                                function: crate::provider::types::FunctionCall {
                                     name: call.function.name,
                                     arguments: call.function.arguments,
                                 },
@@ -929,45 +883,46 @@ impl From<ChatResponse> for crate::provider::types::ChatResponse {
                             .collect()
                     });
 
-                    crate::provider::types::ChatMessage {
-                        role: crate::provider::types::Role::Assistant,
+                    crate::provider::types::AssistantMessage {
                         content,
                         name: choice.message.name,
                         tool_calls,
-                        tool_call_id: None,
+                        refusal: choice.message.refusal,
                     }
                 };
 
-                // Convert finish reason (currently unused, but kept for future use)
-                let _finish_reason = choice.finish_reason.map(|r| match r.as_str() {
+                // Convert finish reason
+                let finish_reason = choice.finish_reason.map(|r| match r.as_str() {
                     "stop" => crate::provider::types::FinishReason::Stop,
                     "length" => crate::provider::types::FinishReason::Length,
                     "tool_calls" => crate::provider::types::FinishReason::ToolCalls,
                     "content_filter" => crate::provider::types::FinishReason::ContentFilter,
                     "function_call" => crate::provider::types::FinishReason::FunctionCall,
-                    _ => crate::provider::types::FinishReason::Stop, // Default
-                });
+                    _ => crate::provider::types::FinishReason::Stop,
+                }).unwrap_or(crate::provider::types::FinishReason::Stop);
 
                 crate::provider::types::ChatChoice {
-                    index: choice.index as i32,
+                    index: choice.index as u32,
                     message,
-                    finish_reason: crate::provider::types::FinishReason::Stop,
-                    logprobs: None, // OpenRouter doesn't provide logprobs
+                    finish_reason,
+                    logprobs: None,
                 }
             })
             .collect();
 
         // Convert usage
         let usage = resp.usage.map(|u| crate::provider::types::Usage {
-            prompt_tokens: u.prompt_tokens as i32,
-            completion_tokens: u.completion_tokens as i32,
-            total_tokens: u.total_tokens as i32,
+            prompt_tokens: u.prompt_tokens as u32,
+            completion_tokens: u.completion_tokens as u32,
+            total_tokens: u.total_tokens as u32,
+            prompt_tokens_details: None,
+            completion_tokens_details: None,
         });
 
         crate::provider::types::ChatResponse {
             id: resp.id,
             object: resp.object,
-            created: resp.created as i64,
+            created: resp.created as u64,
             model: resp.model,
             choices,
             usage,
@@ -983,7 +938,7 @@ impl From<EmbeddingsResponse> for crate::provider::types::EmbeddingResponse {
             .data
             .into_iter()
             .map(|embedding| crate::provider::types::EmbeddingObject {
-                index: embedding.index as usize,
+                index: embedding.index as u32,
                 embedding: embedding.embedding,
                 object: embedding.object,
             })
@@ -991,8 +946,8 @@ impl From<EmbeddingsResponse> for crate::provider::types::EmbeddingResponse {
 
         // Convert usage
         let usage = crate::provider::types::EmbeddingUsage {
-            prompt_tokens: resp.usage.prompt_tokens,
-            total_tokens: resp.usage.total_tokens,
+            prompt_tokens: resp.usage.prompt_tokens as u32,
+            total_tokens: resp.usage.total_tokens as u32,
         };
 
         crate::provider::types::EmbeddingResponse {
