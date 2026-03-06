@@ -7,6 +7,7 @@ use crate::utils::reqwest_client;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::Debug;
 
 /// Chat completion request message role
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -625,7 +626,7 @@ bitflags::bitflags! {
 }
 
 pub async fn call_chat_completions<
-    RQ: From<ChatRequest> + Serialize,
+    RQ: From<ChatRequest> + Serialize + Debug,
     RS: Into<ChatResponse> + DeserializeOwned,
 >(
     url: &str,
@@ -633,6 +634,8 @@ pub async fn call_chat_completions<
     request: ChatRequest,
 ) -> anyhow::Result<ChatResponse> {
     let req: RQ = request.into();
+    println!("Calling chat completions: {}", url);
+    println!("Request: {:?}", serde_json::to_string(&req)?);
     let resp = reqwest_client()
         .post(url)
         .header("Authorization", format!("Bearer {}", api_key))

@@ -40,14 +40,15 @@ struct DeepSeekRequest {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(rename_all = "snake_case")]
 enum DeepSeekModel {
+    #[serde(rename = "deepseek-chat")]
     DeepSeekChat,
+    #[serde(rename = "deepseek-reasoner")]
     DeepSeekReasoner,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(rename_all = "snake_case")]
+#[serde(tag = "role", rename_all = "snake_case")]
 enum Message {
     System {
         content: String,

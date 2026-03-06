@@ -65,7 +65,7 @@ struct ChatRequest {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(rename_all = "snake_case")]
+#[serde(tag = "role", rename_all = "snake_case")]
 pub enum Message {
     System(SystemMessage),
     User(UserMessage),
