@@ -1,17 +1,9 @@
-//! Provider-agnostic types for chat and embeddings
+//! Chat completion types
 //!
-//! This module defines unified abstract types for chat completions and embeddings
-//! that work across all major LLM providers (OpenAI, Anthropic, Google, xAI, DeepSeek, etc.)
-//!
-//! These types serve as the common interface layer - provider-specific implementations
-//! will convert from/to these types.
+//! This module defines types for chat completion requests and responses.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
-// ==========================================
-// Chat Completion Types
-// ==========================================
 
 /// Chat completion request
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -146,7 +138,7 @@ pub enum ContentPart {
     Document { document: Document },
 }
 
-/// Image URL information
+/// Image URL 信息
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ImageUrl {
     /// URL of the image (supports data: URIs and HTTP URLs)
@@ -410,147 +402,4 @@ pub struct TopLogprob {
     pub logprob: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bytes: Option<Vec<u8>>,
-}
-
-// ==========================================
-// Embedding Types
-// ==========================================
-
-/// Embedding request
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct EmbeddingRequest {
-    /// Input text(s) to embed
-    pub input: EmbeddingInput,
-    /// Model to use
-    pub model: String,
-    /// Encoding format
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub encoding_format: Option<EmbeddingEncodingFormat>,
-    /// Number of dimensions
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub dimensions: Option<u32>,
-    /// End user identifier
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub user: Option<String>,
-}
-
-/// Embedding input - supports single or multiple inputs
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(untagged)]
-pub enum EmbeddingInput {
-    /// Single text input
-    String(String),
-    /// Multiple text inputs
-    StringArray(Vec<String>),
-}
-
-/// Embedding encoding format
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(rename_all = "snake_case")]
-pub enum EmbeddingEncodingFormat {
-    Float,
-    Base64,
-}
-
-/// Embedding response
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct EmbeddingResponse {
-    pub object: String,
-    pub data: Vec<EmbeddingObject>,
-    pub model: String,
-    pub usage: EmbeddingUsage,
-}
-
-/// Embedding object
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct EmbeddingObject {
-    pub index: u32,
-    pub embedding: Vec<f32>,
-    pub object: String,
-}
-
-/// Embedding usage
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct EmbeddingUsage {
-    pub prompt_tokens: u32,
-    pub total_tokens: u32,
-}
-
-// ==========================================
-// Provider Capability Types
-// ==========================================
-
-bitflags::bitflags! {
-    /// Provider capabilities
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct ProviderCapabilities: u32 {
-        const CHAT = 1 << 0;
-        const EMBEDDINGS = 1 << 1;
-        const VISION = 1 << 2;
-        const AUDIO_INPUT = 1 << 3;
-        const AUDIO_OUTPUT = 1 << 4;
-        const VIDEO_INPUT = 1 << 5;
-        const FUNCTION_CALLING = 1 << 6;
-        const JSON_MODE = 1 << 7;
-        const STREAMING = 1 << 8;
-    }
-}
-
-// ==========================================
-// Helper Functions for API Calls
-// ==========================================
-
-use crate::utils::reqwest_client;
-use serde::de::DeserializeOwned;
-use std::fmt::Debug;
-
-pub async fn call_chat_completions<
-    RQ: From<ChatRequest> + Serialize + Debug,
-    RS: Into<ChatResponse> + DeserializeOwned,
->(
-    url: &str,
-    api_key: &str,
-    request: ChatRequest,
-) -> anyhow::Result<ChatResponse> {
-    let req: RQ = request.into();
-    tracing::debug!("Calling chat completions: {}", url);
-    tracing::debug!("Request: {:?}", serde_json::to_string(&req)?);
-    let resp = reqwest_client()
-        .post(url)
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .json(&req)
-        .send()
-        .await?;
-    if resp.status().is_success() {
-        let response = resp.json::<RS>().await?;
-        Ok(response.into())
-    } else {
-        anyhow::bail!("Failed to call chat completions: {:?}", resp.text().await?);
-    }
-}
-
-pub async fn call_embedding<
-    RQ: From<EmbeddingRequest> + Serialize,
-    RS: Into<EmbeddingResponse> + DeserializeOwned,
->(
-    url: &str,
-    api_key: &str,
-    request: EmbeddingRequest,
-) -> anyhow::Result<EmbeddingResponse> {
-    let req: RQ = request.into();
-    tracing::debug!("Calling embedding: {}", url);
-    let resp = reqwest_client()
-        .post(url)
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .json(&req)
-        .send()
-        .await?;
-    if resp.status().is_success() {
-        let response = resp.json::<RS>().await?;
-        Ok(response.into())
-    } else {
-        anyhow::bail!("Failed to call embedding: {:?}", resp.text().await?);
-    }
 }
