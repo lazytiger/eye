@@ -167,6 +167,23 @@ impl Agent {
 
             tracing::info!("Executing tool: {} with args: {:?}", tool_name, args);
 
+            // Record tool call for loop detection
+            self.history.record_tool_call(tool_name, &tool_call.function.arguments).await;
+
+            // Check for loop before executing
+            if self.history.check_loop(tool_name, &tool_call.function.arguments).await {
+                let error_msg = format!(
+                    "Loop detected: Tool '{}' with arguments '{}' has been called repeatedly. Aborting to prevent infinite loop.",
+                    tool_name, tool_call.function.arguments
+                );
+                tracing::warn!("{}", error_msg);
+
+                // Clear tool call history to allow recovery
+                self.history.clear_tool_call_history().await;
+
+                return Err(anyhow::anyhow!(error_msg));
+            }
+
             // Execute the tool
             let result = self.tool_manager.execute_tool(tool_name, args).await?;
 
