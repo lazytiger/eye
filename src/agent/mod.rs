@@ -89,11 +89,14 @@ impl Agent {
             // 4. Send request to LLM
             let response = self.provider.chat(request).await?;
 
-            // 5. Check for tool calls
+            // 5. Get assistant message
             let assistant_message = &response.choices.first().unwrap().message;
 
             match &assistant_message.tool_calls {
                 Some(tool_calls) if !tool_calls.is_empty() => {
+                    // Has tool calls - add assistant message to history first
+                    self.history.on_response(&response).await;
+
                     // Execute all tool calls
                     self.execute_tool_calls(tool_calls).await?;
 
