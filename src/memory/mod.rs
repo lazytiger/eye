@@ -4,6 +4,8 @@ use sqlx::{Pool, Sqlite, SqlitePool};
 pub type DatabasePool = Pool<Sqlite>;
 pub type DbConnectOptions = SqliteConnectOptions;
 
+pub mod history;
+
 pub async fn init_database(url: &str) -> anyhow::Result<DatabasePool> {
     let pool_options = url
         .parse::<SqliteConnectOptions>()?

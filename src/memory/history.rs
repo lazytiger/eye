@@ -1,14 +1,14 @@
-use crate::provider::{ChatMessageContent, Content, Message, Provider, Request, Response};
+use crate::provider::{ChatMessage, ChatRequest, ChatResponse, MessageContent, Provider};
 use crate::OptionToResult;
 use anyhow::Context;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 pub struct HistoryManagerInner {
-    messages: Vec<Message>,
+    messages: Vec<ChatMessage>,
     summary_provider: Box<dyn Provider>,
-    system: Message,
-    user: Message,
+    system: ChatMessage,
+    user: ChatMessage,
 }
 
 #[derive(Clone)]
@@ -16,42 +16,26 @@ pub struct HistoryManager(Arc<RwLock<HistoryManagerInner>>);
 
 impl HistoryManager {
     const MIN_HISTORY_SIZE: usize = 20;
-    pub fn new<T: Provider + 'static>(provider: T) -> Self {
+
+    pub fn new(provider: Box<dyn Provider>) -> Self {
         Self(Arc::new(RwLock::new(HistoryManagerInner {
             messages: Vec::new(),
-            summary_provider: Box::new(provider),
-            system: Message::System {
+            summary_provider: provider,
+            system: ChatMessage::System(crate::provider::SystemMessage {
                 name: None,
-                content: r#"You are a conversation compression engine.
-
-Task:
-Summarize the provided conversation history into a concise summary not exceeding 600 characters.
-
-Language requirement:
-The summary must be written in the same language as the original conversation. Do not translate.
-
-Rules:
-1. Output only the summary content.
-2. Do not add any explanations, introductions, or closing remarks.
-3. Do not use phrases like “Here is the summary” or similar.
-4. Do not use bullet points or numbered lists.
-5. Do not add information that is not present in the original conversation.
-6. Remove greetings, repetition, and irrelevant details.
-7. The output must be a single continuous paragraph.
-
-Return only the final summary."#.to_string().into(),
-            },
-            user: Message::User {
+                content: MessageContent::Text("You are a conversation compression engine.\n\nTask:\nSummarize the provided conversation history into a concise summary not exceeding 600 characters.\n\nLanguage requirement:\nThe summary must be written in the same language as the original conversation. Do not translate.\n\nRules:\n1. Output only the summary content.\n2. Do not add any explanations, introductions, or closing remarks.\n3. Do not use phrases like \"Here is the summary\" or similar.\n4. Do not use bullet points or numbered lists.\n5. Do not add information that is not present in the original conversation.\n6. Remove greetings, repetition, and irrelevant details.\n7. The output must be a single continuous paragraph.\n\nReturn only the final summary.".to_string()),
+            }),
+            user: ChatMessage::User(crate::provider::UserMessage {
                 name: None,
-                content: "Compress the full conversation history in this context according to the system instructions.".to_string().into(),
-            },
+                content: MessageContent::Text("Compress the full conversation history in this context according to the system instructions.".to_string()),
+            }),
         })))
     }
 
-    pub async fn on_response(&self, response: &Response) {
+    pub async fn on_response(&self, response: &ChatResponse) {
         let mut inner = self.0.write().await;
         if let Some(choice) = response.choices.first() {
-            inner.messages.push(choice.message.clone().into());
+            inner.messages.push(ChatMessage::Assistant(choice.message.clone()));
         } else {
             tracing::error!("No choices found in response");
         }
@@ -59,25 +43,25 @@ Return only the final summary."#.to_string().into(),
 
     pub async fn add_user_message(&self, message: impl Into<String>) {
         let mut inner = self.0.write().await;
-        inner.messages.push(Message::User {
+        inner.messages.push(ChatMessage::User(crate::provider::UserMessage {
             name: None,
-            content: message.into().into(),
-        });
+            content: MessageContent::Text(message.into()),
+        }));
     }
 
     pub async fn add_tool_result(
         &self,
         tool_call_id: impl Into<String>,
-        content: impl Into<Content<ChatMessageContent>>,
+        content: impl Into<MessageContent>,
     ) {
         let mut inner = self.0.write().await;
-        inner.messages.push(Message::Tool {
+        inner.messages.push(ChatMessage::Tool(crate::provider::ToolMessage {
             tool_call_id: tool_call_id.into(),
             content: content.into(),
-        });
+        }));
     }
 
-    pub async fn messages(&self) -> Vec<Message> {
+    pub async fn messages(&self) -> Vec<ChatMessage> {
         let inner = self.0.read().await;
         inner.messages.clone()
     }
@@ -92,11 +76,11 @@ Return only the final summary."#.to_string().into(),
             .messages
             .iter()
             .enumerate()
-            .find(|(i, m)| *i > len / 2 && matches!(m, Message::User { .. }))
+            .find(|(i, m)| *i > len / 2 && matches!(m, ChatMessage::User { .. }))
             .to_ok()
             .context("Failed to find a suitable position to split history")?;
         let to_be_summary = inner.messages.split_off(index);
-        let mut request = Request::new();
+        let mut request = ChatRequest::default();
         request.messages.push(inner.system.clone());
         request.messages.extend(to_be_summary);
         request.messages.push(inner.user.clone());
@@ -104,10 +88,10 @@ Return only the final summary."#.to_string().into(),
         if let Some(choice) = response.choices.first() {
             inner.messages.insert(
                 0,
-                Message::User {
+                ChatMessage::User(crate::provider::UserMessage {
                     name: None,
-                    content: choice.message.content.clone(),
-                },
+                    content: choice.message.content.clone().unwrap_or(MessageContent::Text(String::new())),
+                }),
             );
         } else {
             tracing::error!("No choices found in response");
@@ -124,17 +108,16 @@ Return only the final summary."#.to_string().into(),
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::create_openai_compatible;
+    use crate::provider::{create_provider, ChatRequest, AssistantMessage};
 
     #[tokio::test]
     async fn test_history() -> anyhow::Result<()> {
-        let history =
-            HistoryManager::new(create_openai_compatible("deepseek", "", "deepseek-chat")?);
-        let provider = create_openai_compatible("deepseek", "", "deepseek-chat")?;
+        let history = HistoryManager::new(create_provider("deepseek", "deepseek-chat", "")?);
+        let provider = create_provider("deepseek", "deepseek-chat", "")?;
         println!("test begin");
-        let mut request = Request::new();
-        // 添加一段较长的用户-助手对话历史，用于测试历史压缩功能
-        request.add_system_message("您是一个专业的rust语言专家， 您的任务是对用户的问题进行回答。");
+        let mut request = ChatRequest::default();
+        // 添加一段较长的用户 - 助手对话历史，用于测试历史压缩功能
+        request.add_system_message("您是一个专业的 rust 语言专家，您的任务是对用户的问题进行回答。");
         let questions = vec![
             "请介绍一下 Rust 语言的主要特点。",
             "所有权系统具体是怎么工作的？",
@@ -149,7 +132,12 @@ mod tests {
             let response = provider.chat(request.clone()).await?;
             request
                 .messages
-                .push(response.choices[0].message.clone().into());
+                .push(ChatMessage::Assistant(AssistantMessage {
+                    content: response.choices[0].message.content.clone(),
+                    name: None,
+                    tool_calls: None,
+                    refusal: None,
+                }));
             history.add_user_message(question).await;
             history.on_response(&response).await;
             println!("Answer: {:?}", response);

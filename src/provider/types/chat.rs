@@ -66,6 +66,24 @@ pub struct ChatRequest {
     pub parallel_tool_calls: Option<bool>,
 }
 
+impl ChatRequest {
+    /// Add a system message with text content
+    pub fn add_system_message(&mut self, content: impl Into<String>) {
+        self.messages.push(ChatMessage::System(SystemMessage {
+            content: MessageContent::Text(content.into()),
+            name: None,
+        }));
+    }
+
+    /// Add a user message with text content
+    pub fn add_user_message(&mut self, content: impl Into<String>) {
+        self.messages.push(ChatMessage::User(UserMessage {
+            content: MessageContent::Text(content.into()),
+            name: None,
+        }));
+    }
+}
+
 /// Chat message with role-based discrimination
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "role", rename_all = "snake_case")]
