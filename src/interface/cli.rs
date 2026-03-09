@@ -35,13 +35,15 @@ impl Interface for CliInterface {
     async fn send(&self, message: String) -> Result<()> {
         // Use console style prefix similar to Claude Code
         // ">" character with cyan color for assistant messages
-        self.term.write_line(&format!("{} {}", style(">").cyan().bold(), message))?;
+        self.term
+            .write_line(&format!("{} {}", style(">").cyan().bold(), message))?;
+        self.term.flush()?;
         Ok(())
     }
 
     async fn listen(&self, response_tx: Sender<String>) -> Result<()> {
         loop {
-            let input = self.term.read_line()?;
+            let input = self.term.read_line_initial_text("> ")?;
             if input.trim().is_empty() {
                 continue;
             }
