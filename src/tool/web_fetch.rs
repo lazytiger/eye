@@ -91,9 +91,15 @@ impl Tool for WebFetchTool {
         // Convert HTML to readable text
         let text_content = WebFetchTool::html_to_markdown(&html_content);
 
-        // Truncate if too long (max 10000 chars)
+        // Truncate if too long (max 10000 chars) - must respect Unicode char boundaries
         let truncated = if text_content.len() > 10000 {
-            format!("{}...\n[Content truncated]", &text_content[..10000])
+            // Use char_indices to find the byte position at or before 10000 chars
+            let end_pos = text_content
+                .char_indices()
+                .nth(10000)
+                .map(|(i, _)| i)
+                .unwrap_or(text_content.len());
+            format!("{}...\n[Content truncated]", &text_content[..end_pos])
         } else {
             text_content
         };
