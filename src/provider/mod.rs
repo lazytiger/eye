@@ -12,7 +12,7 @@ pub mod openrouter;
 pub mod types;
 
 pub use self::types::*;
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 
 #[async_trait::async_trait]
 pub trait Provider: Send + Sync {
@@ -25,7 +25,9 @@ pub trait Provider: Send + Sync {
 
     /// Generates embeddings for the given input text.
     /// Essential for RAG (Retrieval-Augmented Generation) features.
-    async fn embedding(&self, request: EmbeddingRequest) -> Result<EmbeddingResponse>;
+    async fn embedding(&self, _request: EmbeddingRequest) -> Result<EmbeddingResponse> {
+        anyhow::bail!("Embedding not supported by provider {}", self.name());
+    }
 
     /// Returns the capabilities of the currently configured model (e.g., vision, function calling).
     /// This helps the client know what features are available without try-and-error.

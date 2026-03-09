@@ -1,79 +1,123 @@
-#![allow(unused)]
-use crate::provider::{call_chat_completions, call_embedding};
+//! OpenRouter API types and client
+//!
+//! This module contains schema definitions and client implementations
+//! for /chat/completions and /embeddings endpoints based on openrouter.trimmed.yaml
+
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::collections::HashMap;
+
 // ==========================================
-// /chat/completions
+// Chat Completion Types
 // ==========================================
 
+/// Chat completion request (ChatGenerationParams)
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct ChatRequest {
-    pub messages: Vec<Message>,
+pub struct ChatRequest {
+    /// Messages in the conversation
+    pub messages: Vec<ChatMessage>,
+    /// Model to use for completion
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Models to use for completion (OpenRouter specific)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub models: Option<Vec<String>>,
+    /// Response format
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_format: Option<ResponseFormat>,
+    /// Stop sequences
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stop: Option<Stop>,
+    /// Whether to stream the response
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
+    /// Stream options
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream_options: Option<ChatStreamOptions>,
+    /// Maximum number of tokens to generate (deprecated)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
+    /// Maximum completion tokens
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_completion_tokens: Option<u32>,
+    /// Temperature sampling parameter (0-2)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
+    /// Top-p sampling parameter (0-1)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_p: Option<f32>,
+    /// Top-k sampling parameter
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_k: Option<u32>,
+    /// Frequency penalty (-2 to 2)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub frequency_penalty: Option<f32>,
+    /// Presence penalty (-2 to 2)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub presence_penalty: Option<f32>,
+    /// Repetition penalty
     #[serde(skip_serializing_if = "Option::is_none")]
     pub repetition_penalty: Option<f32>,
+    /// Random seed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seed: Option<i64>,
+    /// List of tools the model may call
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<Tool>>,
+    /// Tool choice option
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<ToolChoice>,
+    /// Logit bias
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logit_bias: Option<HashMap<String, f32>>,
+    /// Whether to return log probabilities
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logprobs: Option<bool>,
+    /// Number of top log probabilities to return (0-20)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_logprobs: Option<u32>,
+    /// Unique identifier for the end-user
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub transforms: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub route: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider: Option<Provider>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub plugins: Option<Vec<String>>,
+    /// Session ID for grouping requests
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
+    /// Metadata (max 16 pairs)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<HashMap<String, Value>>,
+    pub metadata: Option<HashMap<String, String>>,
+    /// Provider preferences for routing
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<ProviderPreferences>,
+    /// Plugins to enable
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plugins: Option<Vec<Plugin>>,
+    /// Reasoning configuration
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<ReasoningConfig>,
+    /// Trace metadata
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace: Option<TraceConfig>,
 }
 
+/// Chat stream options
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ChatStreamOptions {
+    /// Whether to include usage in stream
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub include_usage: Option<bool>,
+}
+
+/// Chat message
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "role", rename_all = "snake_case")]
-pub enum Message {
+pub enum ChatMessage {
     System(SystemMessage),
     User(UserMessage),
     Assistant(AssistantMessage),
-    Tool(ToolResponseMessage),
+    Tool(ToolMessage),
     Developer(DeveloperMessage),
 }
 
+/// System message
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SystemMessage {
     pub content: MessageContent,
@@ -81,6 +125,7 @@ pub struct SystemMessage {
     pub name: Option<String>,
 }
 
+/// User message
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserMessage {
     pub content: MessageContent,
@@ -88,6 +133,7 @@ pub struct UserMessage {
     pub name: Option<String>,
 }
 
+/// Assistant message
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AssistantMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -100,12 +146,14 @@ pub struct AssistantMessage {
     pub refusal: Option<String>,
 }
 
+/// Tool message
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ToolResponseMessage {
+pub struct ToolMessage {
     pub content: MessageContent,
     pub tool_call_id: String,
 }
 
+/// Developer message
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DeveloperMessage {
     pub content: MessageContent,
@@ -113,6 +161,7 @@ pub struct DeveloperMessage {
     pub name: Option<String>,
 }
 
+/// Message content
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum MessageContent {
@@ -120,32 +169,47 @@ pub enum MessageContent {
     Parts(Vec<ContentPart>),
 }
 
+/// Content part
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentPart {
-    Text { text: String },
-    ImageUrl { image_url: ImageUrl },
-    AudioUrl { audio_url: AudioUrl },
-    VideoUrl { video_url: VideoUrl },
+    Text {
+        text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cache_control: Option<CacheControl>,
+    },
+    ImageUrl {
+        image_url: ImageUrl,
+    },
 }
 
+/// Cache control for content
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CacheControl {
+    #[serde(rename = "type")]
+    pub cache_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttl: Option<String>,
+}
+
+/// Image URL
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ImageUrl {
     pub url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub detail: Option<String>,
+    pub detail: Option<ImageDetail>,
 }
 
+/// Image detail level
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct AudioUrl {
-    pub url: String,
+#[serde(rename_all = "snake_case")]
+pub enum ImageDetail {
+    Low,
+    High,
+    Auto,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct VideoUrl {
-    pub url: String,
-}
-
+/// Tool call
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ToolCall {
     pub id: String,
@@ -154,27 +218,14 @@ pub struct ToolCall {
     pub function: FunctionCall,
 }
 
+/// Function call
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FunctionCall {
     pub name: String,
     pub arguments: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(untagged)]
-pub enum ResponseFormat {
-    Text,
-    JsonObject,
-    JsonSchema { json_schema: Value },
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(untagged)]
-pub enum Stop {
-    String(String),
-    Array(Vec<String>),
-}
-
+/// Tool definition
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Tool {
     #[serde(rename = "type")]
@@ -182,17 +233,19 @@ pub struct Tool {
     pub function: FunctionDefinition,
 }
 
+/// Function definition
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FunctionDefinition {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub parameters: Option<Value>,
+    pub parameters: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub strict: Option<bool>,
 }
 
+/// Tool choice
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum ToolChoice {
@@ -200,6 +253,7 @@ pub enum ToolChoice {
     Object(ToolChoiceObject),
 }
 
+/// Tool choice object
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ToolChoiceObject {
     #[serde(rename = "type")]
@@ -207,754 +261,605 @@ pub struct ToolChoiceObject {
     pub function: ToolChoiceFunction,
 }
 
+/// Tool choice function
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ToolChoiceFunction {
     pub name: String,
 }
 
+/// Response format
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Provider {
-    pub id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider: Option<Box<Provider>>,
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ResponseFormat {
+    Text,
+    JsonObject,
+    JsonSchema {
+        json_schema: JsonSchemaConfig,
+    },
+    Grammar {
+        grammar: String,
+    },
+    Python,
 }
 
-// ==========================================
-// /chat/completions (Response)
-// ==========================================
+/// JSON Schema configuration
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct JsonSchemaConfig {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub schema: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strict: Option<bool>,
+}
 
+/// Stop sequences
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum Stop {
+    String(String),
+    Array(Vec<String>),
+}
+
+/// Provider preferences for routing
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub struct ProviderPreferences {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allow_fallbacks: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub require_parameters: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_collection: Option<DataCollection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zdr: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enforce_distillable_text: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub order: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub only: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ignore: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quantizations: Option<Vec<Quantization>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort: Option<ProviderSort>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_price: Option<MaxPrice>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preferred_min_throughput: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preferred_max_latency: Option<f64>,
+}
+
+/// Data collection setting
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum DataCollection {
+    Allow,
+    Deny,
+}
+
+/// Quantization level
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum Quantization {
+    Int4,
+    Int8,
+    Fp4,
+    Fp6,
+    Fp8,
+    Fp16,
+    Bf16,
+    Fp32,
+    Unknown,
+}
+
+/// Provider sort configuration
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum ProviderSort {
+    String(String),
+    Config(ProviderSortConfig),
+}
+
+/// Provider sort config
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ProviderSortConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub partition: Option<String>,
+}
+
+/// Max price configuration
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MaxPrice {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completion: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audio: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request: Option<f64>,
+}
+
+/// Plugin configuration
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(tag = "id")]
+pub enum Plugin {
+    #[serde(rename = "auto-router")]
+    AutoRouter {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        enabled: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        allowed_models: Option<Vec<String>>,
+    },
+    #[serde(rename = "moderation")]
+    Moderation,
+    #[serde(rename = "web")]
+    Web {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        enabled: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        max_results: Option<u32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        search_prompt: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        engine: Option<WebSearchEngine>,
+    },
+    #[serde(rename = "file-parser")]
+    FileParser {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        enabled: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pdf: Option<PdfParserOptions>,
+    },
+    #[serde(rename = "response-healing")]
+    ResponseHealing {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        enabled: Option<bool>,
+    },
+}
+
+/// Web search engine
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum WebSearchEngine {
+    Native,
+    Exa,
+}
+
+/// PDF parser options
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PdfParserOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub engine: Option<PdfParserEngine>,
+}
+
+/// PDF parser engine
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum PdfParserEngine {
+    MistralOcr,
+    PdfText,
+    Native,
+}
+
+/// Reasoning configuration
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ReasoningConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effort: Option<ReasoningEffort>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<ReasoningSummaryVerbosity>,
+}
+
+/// Reasoning effort level
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningEffort {
+    Xhigh,
+    High,
+    Medium,
+    Low,
+    Minimal,
+    None,
+}
+
+/// Reasoning summary verbosity
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningSummaryVerbosity {
+    Auto,
+    Concise,
+    Detailed,
+}
+
+/// Trace configuration
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TraceConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub span_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generation_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_span_id: Option<String>,
+}
+
+/// Chat completion response
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ChatResponse {
     pub id: String,
-    pub choices: Vec<ChatResponseChoice>,
+    pub choices: Vec<ChatChoice>,
     pub created: u64,
     pub model: String,
-    pub object: String, // "chat.completion"
-    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object: String,
     pub system_fingerprint: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub usage: Option<Usage>,
+    pub usage: ChatGenerationTokenUsage,
 }
 
+/// Chat completion choice
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ChatResponseChoice {
+pub struct ChatChoice {
+    pub finish_reason: Option<ChatCompletionFinishReason>,
     pub index: u32,
     pub message: AssistantMessage,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub finish_reason: Option<String>,
+    pub logprobs: Option<ChatMessageTokenLogprobs>,
 }
 
+/// Chat completion finish reason
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Usage {
-    pub prompt_tokens: u32,
+#[serde(rename_all = "snake_case")]
+pub enum ChatCompletionFinishReason {
+    ToolCalls,
+    Stop,
+    Length,
+    ContentFilter,
+    Error,
+}
+
+/// Token usage statistics
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ChatGenerationTokenUsage {
     pub completion_tokens: u32,
+    pub prompt_tokens: u32,
     pub total_tokens: u32,
-}
-
-// ==========================================
-// /responses
-// ==========================================
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct OpenResponsesRequest {
-    pub request: ChatRequest,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub response: Option<ChatResponse>,
+    pub completion_tokens_details: Option<CompletionTokensDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_details: Option<PromptTokensDetails>,
 }
 
+/// Completion tokens details
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct OpenResponsesNonStreamingResponse {
-    pub request: ChatRequest,
-    pub response: ChatResponse,
+pub struct CompletionTokensDetails {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audio_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accepted_prediction_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rejected_prediction_tokens: Option<u32>,
 }
 
+/// Prompt tokens details
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct AnthropicMessagesResponse {
-    pub id: String,
-    pub model: String,
-    pub usage: Usage,
-    pub content: Vec<ContentPart>,
-    pub stop_reason: Option<String>,
+pub struct PromptTokensDetails {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cached_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_write_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audio_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub video_tokens: Option<u32>,
+}
+
+/// Token log probabilities
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ChatMessageTokenLogprobs {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<Vec<TokenLogprob>>,
+}
+
+/// Token logprob
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TokenLogprob {
+    pub token: String,
+    pub logprob: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bytes: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_logprobs: Option<Vec<TopLogprob>>,
+}
+
+/// Top logprob
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TopLogprob {
+    pub token: String,
+    pub logprob: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bytes: Option<Vec<u8>>,
 }
 
 // ==========================================
-// /embeddings
+// Embeddings Types
 // ==========================================
 
+/// Embedding input content item for multimodal embeddings
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum EmbeddingContentItem {
+    Text { text: String },
+    ImageUrl { image_url: EmbeddingImageUrl },
+}
+
+/// Image URL for embedding content
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct EmbeddingImageUrl {
+    pub url: String,
+}
+
+/// Embedding input type
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum EmbeddingInput {
+    /// Single string input
+    String(String),
+    /// Array of string inputs
+    StringArray(Vec<String>),
+    /// Array of numeric tokens
+    NumberArray(Vec<f64>),
+    /// Array of numeric arrays
+    NumberArray2D(Vec<Vec<f64>>),
+    /// Array of content items
+    ContentArray(Vec<EmbeddingContentItem>),
+}
+
+/// Embeddings request
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EmbeddingsRequest {
-    pub input: Value,
+    /// Input to embed
+    pub input: EmbeddingInput,
+    /// Model to use for embeddings
     pub model: String,
+    /// Encoding format
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub encoding_format: Option<String>,
+    pub encoding_format: Option<EmbeddingEncodingFormat>,
+    /// Number of dimensions
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dimensions: Option<u32>,
+    /// User identifier
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
+    /// Provider preferences
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider: Option<Provider>,
+    pub provider: Option<ProviderPreferences>,
+    /// Input type hint
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_type: Option<String>,
 }
 
+/// Embedding encoding format
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum EmbeddingEncodingFormat {
+    Float,
+    Base64,
+}
+
+/// Embeddings response
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EmbeddingsResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    pub object: String, // "list"
-    pub data: Vec<Embedding>,
+    pub object: String,
+    pub data: Vec<EmbeddingObject>,
     pub model: String,
-    pub usage: Usage,
+    pub usage: EmbeddingUsage,
 }
 
+/// Embedding object
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Embedding {
-    pub object: String, // "embedding"
+pub struct EmbeddingObject {
+    pub object: String,
+    pub embedding: EmbeddingData,
     pub index: u32,
-    pub embedding: Vec<f32>,
 }
 
-// ==========================================
-// /generation
-// ==========================================
-
+/// Embedding data (array or base64 string)
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct GenerationResponse {
-    pub data: GenerationData,
+#[serde(untagged)]
+pub enum EmbeddingData {
+    Array(Vec<f32>),
+    Base64(String),
 }
 
+/// Embedding usage
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct GenerationData {
-    pub id: String,
-    pub total_cost: f64,
-    pub model: String,
+pub struct EmbeddingUsage {
+    pub prompt_tokens: u32,
+    pub total_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost: Option<f64>,
 }
 
 // ==========================================
-// /credits
+// OpenRouter Client
 // ==========================================
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct CreditsResponse {
-    pub credits: f64,
+use anyhow::{Result, anyhow};
+
+/// OpenRouter API client configuration
+#[derive(Clone, Debug)]
+pub struct OpenRouterConfig {
+    /// API key for authentication
+    pub api_key: String,
+    /// Base URL for the API (default: https://openrouter.ai/api/v1)
+    pub base_url: String,
+    /// Optional HTTP client timeout
+    pub timeout_secs: Option<u64>,
 }
 
-// ==========================================
-// /charges
-// ==========================================
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct CreateChargeResponse {
-    pub id: String,
-    pub amount: f64,
-    pub currency: String,
-    pub status: String,
-}
-
-// ==========================================
-// /models
-// ==========================================
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ModelListResponse {
-    pub data: Vec<Model>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Model {
-    pub id: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub pricing: Pricing,
-    pub context_length: u32,
-    pub architecture: Architecture,
-    pub top_provider: TopProvider,
-    pub per_request_limits: Option<PerRequestLimits>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Pricing {
-    pub prompt: f64,
-    pub completion: f64,
-    pub image: f64,
-    pub request: f64,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Architecture {
-    pub modality: String,
-    pub tokenizer: String,
-    pub instruct_type: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct TopProvider {
-    pub id: String,
-    pub provider: Provider,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct PerRequestLimits {
-    pub prompt_tokens: String,
-    pub completion_tokens: String,
-}
-
-// ==========================================
-// /keys
-// ==========================================
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct KeyListResponse {
-    pub data: Vec<Key>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Key {
-    pub id: String,
-    pub name: String,
-    pub created: u64,
-    pub last_used: Option<u64>,
-    pub scopes: Vec<String>,
-}
-
-// ==========================================
-// /activity
-// ==========================================
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ActivityResponse {
-    pub data: Vec<Activity>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Activity {
-    pub id: String,
-    pub created: u64,
-    pub model: String,
-    pub provider: String,
-    pub cost: f64,
-    pub request_tokens: u32,
-    pub response_tokens: u32,
-}
-
-// ==========================================
-// From trait implementations for conversion
-// ==========================================
-
-impl From<crate::provider::types::EmbeddingRequest> for EmbeddingsRequest {
-    fn from(req: crate::provider::types::EmbeddingRequest) -> Self {
-        // Convert input from EmbeddingInput enum to OpenRouter format
-        let input = match req.input {
-            crate::provider::types::EmbeddingInput::String(s) => {
-                serde_json::Value::String(s)
-            }
-            crate::provider::types::EmbeddingInput::StringArray(arr) => {
-                serde_json::Value::Array(arr.into_iter().map(serde_json::Value::String).collect())
-            }
-        };
-
-        // Convert encoding format
-        let encoding_format = req.encoding_format.map(|fmt| match fmt {
-            crate::provider::types::EmbeddingEncodingFormat::Float => "float".to_string(),
-            crate::provider::types::EmbeddingEncodingFormat::Base64 => "base64".to_string(),
-        });
-
-        EmbeddingsRequest {
-            input,
-            model: req.model,
-            encoding_format,
-            dimensions: req.dimensions.map(|d| d as u32),
-            user: req.user,
-            provider: None,
-        }
-    }
-}
-
-// ==========================================
-// OpenRouter Provider Implementation
-// ==========================================
-
-/// OpenRouter provider struct
-pub struct OpenrouterProvider {
-    /// API key for OpenRouter
-    api_key: String,
-    /// Model name (e.g., "openai/gpt-4", "anthropic/claude-3-opus")
-    model: String,
-    /// Base URL for OpenRouter API (default: "https://openrouter.ai/api/v1")
-    base_url: String,
-}
-
-impl OpenrouterProvider {
-    /// Create a new OpenRouter provider
-    pub fn new(api_key: String, model: String) -> Self {
+impl Default for OpenRouterConfig {
+    fn default() -> Self {
         Self {
-            api_key,
-            model,
+            api_key: String::new(),
             base_url: "https://openrouter.ai/api/v1".to_string(),
+            timeout_secs: Some(30),
         }
     }
+}
 
-    /// Create a new OpenRouter provider with custom base URL
-    pub fn new_with_base_url(api_key: String, model: String, base_url: String) -> Self {
+impl OpenRouterConfig {
+    /// Create a new configuration with the given API key
+    pub fn new(api_key: impl Into<String>) -> Self {
         Self {
-            api_key,
-            model,
-            base_url,
+            api_key: api_key.into(),
+            ..Default::default()
         }
+    }
+
+    /// Set the base URL
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.base_url = base_url.into();
+        self
+    }
+
+    /// Set the timeout
+    pub fn with_timeout(mut self, timeout_secs: u64) -> Self {
+        self.timeout_secs = Some(timeout_secs);
+        self
     }
 }
 
-#[async_trait::async_trait]
-impl crate::provider::Provider for OpenrouterProvider {
-    fn name(&self) -> &str {
-        "openrouter"
+/// OpenRouter API client
+#[derive(Clone)]
+pub struct OpenRouterClient {
+    config: OpenRouterConfig,
+    http_client: reqwest::Client,
+}
+
+impl OpenRouterClient {
+    /// Create a new OpenRouter client with the given configuration
+    pub fn new(config: OpenRouterConfig) -> Result<Self> {
+        let mut builder = reqwest::Client::builder();
+        if let Some(timeout) = config.timeout_secs {
+            builder = builder.timeout(std::time::Duration::from_secs(timeout));
+        }
+        let http_client = builder.build()?;
+
+        Ok(Self {
+            config,
+            http_client,
+        })
     }
 
-    async fn chat(
-        &self,
-        mut request: crate::provider::types::ChatRequest,
-    ) -> anyhow::Result<crate::provider::types::ChatResponse> {
-        request.model = Some(self.model.clone());
-        let url = format!("{}/chat/completions", self.base_url);
-        call_chat_completions::<ChatRequest, ChatResponse>(&url, &self.api_key, request).await
+    /// Create a new OpenRouter client with API key
+    pub fn with_api_key(api_key: impl Into<String>) -> Result<Self> {
+        let config = OpenRouterConfig::new(api_key);
+        Self::new(config)
     }
 
-    async fn embedding(
-        &self,
-        request: crate::provider::types::EmbeddingRequest,
-    ) -> anyhow::Result<crate::provider::types::EmbeddingResponse> {
-        let url = format!("{}/embeddings", self.base_url);
-        call_embedding::<EmbeddingsRequest, EmbeddingsResponse>(&url, &self.api_key, request).await
+    /// Create a new OpenRouter client with API key and custom base URL
+    pub fn with_base_url(api_key: impl Into<String>, base_url: impl Into<String>) -> Result<Self> {
+        let config = OpenRouterConfig::new(api_key).with_base_url(base_url);
+        Self::new(config)
     }
 
-    fn capabilities(&self) -> crate::provider::types::ProviderCapabilities {
-        // OpenRouter supports many models with different capabilities
-        let model_lower = self.model.to_lowercase();
-        let mut capabilities = crate::provider::types::ProviderCapabilities::CHAT;
-
-        // Most models on OpenRouter support function calling
-        if model_lower.contains("gpt")
-            || model_lower.contains("claude")
-            || model_lower.contains("gemini")
-        {
-            capabilities |= crate::provider::types::ProviderCapabilities::FUNCTION_CALLING;
-        }
-
-        // Check for vision capabilities
-        if model_lower.contains("vision")
-            || model_lower.contains("gpt-4-vision")
-            || model_lower.contains("claude-3")
-        {
-            capabilities |= crate::provider::types::ProviderCapabilities::VISION;
-        }
-
-        // Check for audio capabilities
-        if model_lower.contains("whisper") || model_lower.contains("audio") {
-            capabilities |= crate::provider::types::ProviderCapabilities::AUDIO_INPUT;
-        }
-
-        // Check for JSON/object generation
-        if model_lower.contains("json") {
-            capabilities |= crate::provider::types::ProviderCapabilities::JSON_MODE;
-        }
-
-        // OpenRouter supports streaming
-        capabilities |= crate::provider::types::ProviderCapabilities::STREAMING;
-
-        capabilities
+    /// Get the API key
+    pub fn api_key(&self) -> &str {
+        &self.config.api_key
     }
 
-    fn max_context_length(&self) -> usize {
-        // Return context length based on model
-        let model_lower = self.model.to_lowercase();
+    /// Get the base URL
+    pub fn base_url(&self) -> &str {
+        &self.config.base_url
+    }
 
-        if model_lower.contains("gpt-4") {
-            if model_lower.contains("32k") {
-                32768
-            } else if model_lower.contains("128k") {
-                131072
-            } else {
-                8192
-            }
-        } else if model_lower.contains("claude-3") {
-            if model_lower.contains("200k") {
-                200000
-            } else {
-                100000
-            }
-        } else if model_lower.contains("gemini") {
-            if model_lower.contains("1.5") {
-                1000000 // Gemini 1.5 has 1M context
-            } else {
-                32768
-            }
-        } else if model_lower.contains("gpt-3.5") {
-            if model_lower.contains("16k") {
-                16384
-            } else {
-                4096
-            }
+    /// Build a URL from a path
+    fn build_url(&self, path: &str) -> String {
+        format!("{}{}", self.config.base_url, path)
+    }
+
+    /// Create an authenticated request builder
+    fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
+        let url = self.build_url(path);
+        self.http_client
+            .request(method, &url)
+            .header("Authorization", format!("Bearer {}", self.api_key()))
+            .header("Content-Type", "application/json")
+            .header("HTTP-Referer", "https://github.com/eye/eye")
+            .header("X-Title", "Eye Assistant")
+    }
+
+    /// Create a chat completion
+    pub async fn chat(&self, request: ChatRequest) -> Result<ChatResponse> {
+        let url = self.build_url("/chat/completions");
+
+        let response = self
+            .http_client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key()))
+            .header("Content-Type", "application/json")
+            .header("HTTP-Referer", "https://github.com/eye/eye")
+            .header("X-Title", "Eye Assistant")
+            .json(&request)
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            Ok(response.json::<ChatResponse>().await?)
         } else {
-            // Default context length
-            4096
+            let error = response.text().await?;
+            Err(anyhow!("Chat completion failed: {}", error))
+        }
+    }
+
+    /// Create embeddings
+    pub async fn embeddings(&self, request: EmbeddingsRequest) -> Result<EmbeddingsResponse> {
+        let url = self.build_url("/embeddings");
+
+        let response = self
+            .http_client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key()))
+            .header("Content-Type", "application/json")
+            .header("HTTP-Referer", "https://github.com/eye/eye")
+            .header("X-Title", "Eye Assistant")
+            .json(&request)
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            Ok(response.json::<EmbeddingsResponse>().await?)
+        } else {
+            let error = response.text().await?;
+            Err(anyhow!("Embeddings request failed: {}", error))
         }
     }
 }
 
-impl From<crate::provider::types::ChatRequest> for ChatRequest {
-    fn from(req: crate::provider::types::ChatRequest) -> Self {
-        // Convert messages from new enum-based ChatMessage
-        let messages = req.messages.into_iter().map(|msg| {
-            match msg {
-                crate::provider::types::ChatMessage::System(s) => {
-                    let content = match s.content {
-                        crate::provider::types::MessageContent::Text(text) => {
-                            MessageContent::Text(text)
-                        }
-                        crate::provider::types::MessageContent::Parts(parts) => {
-                            let mut openrouter_parts = Vec::new();
-                            for part in parts {
-                                match part {
-                                    crate::provider::types::ContentPart::Text { text } => {
-                                        openrouter_parts.push(ContentPart::Text { text });
-                                    }
-                                    crate::provider::types::ContentPart::ImageUrl { image_url } => {
-                                        openrouter_parts.push(ContentPart::ImageUrl {
-                                            image_url: ImageUrl {
-                                                url: image_url.url,
-                                                detail: image_url.detail.map(|d| match d {
-                                                    crate::provider::types::ImageDetail::Low => "low".to_string(),
-                                                    crate::provider::types::ImageDetail::High => "high".to_string(),
-                                                    crate::provider::types::ImageDetail::Auto => "auto".to_string(),
-                                                }),
-                                            }
-                                        });
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            MessageContent::Parts(openrouter_parts)
-                        }
-                    };
-
-                    Message::System(SystemMessage {
-                        content,
-                        name: s.name,
-                    })
-                }
-                crate::provider::types::ChatMessage::User(u) => {
-                    let content = match u.content {
-                        crate::provider::types::MessageContent::Text(text) => {
-                            MessageContent::Text(text)
-                        }
-                        crate::provider::types::MessageContent::Parts(parts) => {
-                            let mut openrouter_parts = Vec::new();
-                            for part in parts {
-                                match part {
-                                    crate::provider::types::ContentPart::Text { text } => {
-                                        openrouter_parts.push(ContentPart::Text { text });
-                                    }
-                                    crate::provider::types::ContentPart::ImageUrl { image_url } => {
-                                        openrouter_parts.push(ContentPart::ImageUrl {
-                                            image_url: ImageUrl {
-                                                url: image_url.url,
-                                                detail: image_url.detail.map(|d| match d {
-                                                    crate::provider::types::ImageDetail::Low => "low".to_string(),
-                                                    crate::provider::types::ImageDetail::High => "high".to_string(),
-                                                    crate::provider::types::ImageDetail::Auto => "auto".to_string(),
-                                                }),
-                                            }
-                                        });
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            MessageContent::Parts(openrouter_parts)
-                        }
-                    };
-
-                    Message::User(UserMessage {
-                        content,
-                        name: u.name,
-                    })
-                }
-                crate::provider::types::ChatMessage::Assistant(a) => {
-                    let content = a.content.map(|c| match c {
-                        crate::provider::types::MessageContent::Text(text) => {
-                            MessageContent::Text(text)
-                        }
-                        crate::provider::types::MessageContent::Parts(parts) => {
-                            let mut text_parts = Vec::new();
-                            for part in parts {
-                                match part {
-                                    crate::provider::types::ContentPart::Text { text } => {
-                                        text_parts.push(text);
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            MessageContent::Text(text_parts.join(" "))
-                        }
-                    });
-
-                    let tool_calls = a.tool_calls.map(|calls| {
-                        calls.into_iter().map(|call| {
-                            ToolCall {
-                                id: call.id,
-                                type_: "function".to_string(),
-                                function: FunctionCall {
-                                    name: call.function.name,
-                                    arguments: call.function.arguments,
-                                },
-                            }
-                        }).collect()
-                    });
-
-                    Message::Assistant(AssistantMessage {
-                        content,
-                        name: a.name,
-                        tool_calls,
-                        refusal: None,
-                    })
-                }
-                crate::provider::types::ChatMessage::Tool(t) => {
-                    let content = match t.content {
-                        crate::provider::types::MessageContent::Text(text) => {
-                            MessageContent::Text(text)
-                        }
-                        crate::provider::types::MessageContent::Parts(parts) => {
-                            let mut text_parts = Vec::new();
-                            for part in parts {
-                                match part {
-                                    crate::provider::types::ContentPart::Text { text } => {
-                                        text_parts.push(text);
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            MessageContent::Text(text_parts.join(" "))
-                        }
-                    };
-
-                    Message::Tool(ToolResponseMessage {
-                        content,
-                        tool_call_id: t.tool_call_id,
-                    })
-                }
-            }
-        }).collect();
-
-        // Convert tools
-        let tools = req.tools.map(|tools| {
-            tools
-                .into_iter()
-                .map(|tool| Tool {
-                    type_: "function".to_string(),
-                    function: FunctionDefinition {
-                        name: tool.function.name,
-                        description: tool.function.description,
-                        parameters: Some(tool.function.parameters),
-                        strict: tool.function.strict,
-                    },
-                })
-                .collect()
-        });
-
-        // Convert tool choice
-        let tool_choice = req.tool_choice.map(|choice| match choice {
-            crate::provider::types::ToolChoice::Auto(s) => ToolChoice::String(s),
-            crate::provider::types::ToolChoice::Named(obj) => {
-                ToolChoice::Object(ToolChoiceObject {
-                    type_: "function".to_string(),
-                    function: ToolChoiceFunction {
-                        name: obj.function.name,
-                    },
-                })
-            }
-        });
-
-        // Convert response format
-        let response_format = req.response_format.map(|format| match format {
-            crate::provider::types::ResponseFormat::Text => ResponseFormat::Text,
-            crate::provider::types::ResponseFormat::JsonObject => ResponseFormat::JsonObject,
-            crate::provider::types::ResponseFormat::JsonSchema { json_schema } => {
-                ResponseFormat::JsonSchema {
-                    json_schema: serde_json::json!({
-                        "name": json_schema.name,
-                        "description": json_schema.description,
-                        "schema": json_schema.schema,
-                        "strict": json_schema.strict,
-                    }),
-                }
-            }
-        });
-
-        // Convert stop
-        let stop = req.stop.map(|stop| match stop {
-            crate::provider::types::Stop::Single(s) => Stop::String(s),
-            crate::provider::types::Stop::Multiple(arr) => Stop::Array(arr),
-        });
-
-        ChatRequest {
-            messages,
-            model: req.model,
-            models: None,
-            response_format,
-            stop,
-            stream: req.stream,
-            max_tokens: req.max_tokens.map(|t| t as u32),
-            max_completion_tokens: req.max_tokens.map(|t| t as u32),
-            temperature: req.temperature,
-            top_p: req.top_p,
-            top_k: None,
-            frequency_penalty: req.frequency_penalty,
-            presence_penalty: req.presence_penalty,
-            repetition_penalty: None,
-            seed: req.seed,
-            tools,
-            tool_choice,
-            logit_bias: req
-                .logit_bias
-                .map(|bias| bias.into_iter().map(|(k, v)| (k, v as f32)).collect()),
-            logprobs: req.logprobs,
-            top_logprobs: req.top_logprobs.map(|t| t as u32),
-            user: req.user,
-            transforms: None,
-            route: None,
-            provider: None,
-            plugins: None,
-            session_id: None,
-            metadata: None,
-        }
-    }
+/// Helper function to create a new OpenRouter client
+pub fn create_client(api_key: impl Into<String>) -> Result<OpenRouterClient> {
+    OpenRouterClient::with_api_key(api_key)
 }
 
-impl From<ChatResponse> for crate::provider::types::ChatResponse {
-    fn from(resp: ChatResponse) -> Self {
-        // Convert choices
-        let choices = resp
-            .choices
-            .into_iter()
-            .map(|choice| {
-                // Convert message - use new AssistantMessage type
-                let message = {
-                    // Convert content to new MessageContent type
-                    let content = choice.message.content.map(|c| match c {
-                        MessageContent::Text(text) => crate::provider::types::MessageContent::Text(text),
-                        MessageContent::Parts(parts) => {
-                            let mut content_parts = Vec::new();
-                            for part in parts {
-                                match part {
-                                    ContentPart::Text { text } => {
-                                        content_parts.push(crate::provider::types::ContentPart::Text { text });
-                                    }
-                                    ContentPart::ImageUrl { image_url } => {
-                                        content_parts.push(crate::provider::types::ContentPart::ImageUrl {
-                                            image_url: crate::provider::types::ImageUrl {
-                                                url: image_url.url,
-                                                detail: image_url.detail.map(|d| {
-                                                    match d.as_str() {
-                                                        "low" => crate::provider::types::ImageDetail::Low,
-                                                        "high" => crate::provider::types::ImageDetail::High,
-                                                        "auto" => crate::provider::types::ImageDetail::Auto,
-                                                        _ => crate::provider::types::ImageDetail::Auto,
-                                                    }
-                                                }),
-                                            },
-                                        });
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            crate::provider::types::MessageContent::Parts(content_parts)
-                        }
-                    });
-
-                    // Convert tool calls
-                    let tool_calls = choice.message.tool_calls.map(|calls| {
-                        calls
-                            .into_iter()
-                            .map(|call| crate::provider::types::ToolCall {
-                                id: call.id,
-                                type_: crate::provider::types::ToolType::Function,
-                                function: crate::provider::types::FunctionCall {
-                                    name: call.function.name,
-                                    arguments: call.function.arguments,
-                                },
-                            })
-                            .collect()
-                    });
-
-                    crate::provider::types::AssistantMessage {
-                        content,
-                        name: choice.message.name,
-                        tool_calls,
-                        refusal: choice.message.refusal,
-                    }
-                };
-
-                // Convert finish reason
-                let finish_reason = choice.finish_reason.map(|r| match r.as_str() {
-                    "stop" => crate::provider::types::FinishReason::Stop,
-                    "length" => crate::provider::types::FinishReason::Length,
-                    "tool_calls" => crate::provider::types::FinishReason::ToolCalls,
-                    "content_filter" => crate::provider::types::FinishReason::ContentFilter,
-                    "function_call" => crate::provider::types::FinishReason::FunctionCall,
-                    _ => crate::provider::types::FinishReason::Stop,
-                }).unwrap_or(crate::provider::types::FinishReason::Stop);
-
-                crate::provider::types::ChatChoice {
-                    index: choice.index as u32,
-                    message,
-                    finish_reason,
-                    logprobs: None,
-                }
-            })
-            .collect();
-
-        // Convert usage
-        let usage = resp.usage.map(|u| crate::provider::types::Usage {
-            prompt_tokens: u.prompt_tokens as u32,
-            completion_tokens: u.completion_tokens as u32,
-            total_tokens: u.total_tokens as u32,
-            prompt_tokens_details: None,
-            completion_tokens_details: None,
-        });
-
-        crate::provider::types::ChatResponse {
-            id: resp.id,
-            object: resp.object,
-            created: resp.created as u64,
-            model: resp.model,
-            choices,
-            usage,
-            system_fingerprint: resp.system_fingerprint,
-        }
-    }
-}
-
-impl From<EmbeddingsResponse> for crate::provider::types::EmbeddingResponse {
-    fn from(resp: EmbeddingsResponse) -> Self {
-        // Convert data
-        let data = resp
-            .data
-            .into_iter()
-            .map(|embedding| crate::provider::types::EmbeddingObject {
-                index: embedding.index as u32,
-                embedding: embedding.embedding,
-                object: embedding.object,
-            })
-            .collect();
-
-        // Convert usage
-        let usage = crate::provider::types::EmbeddingUsage {
-            prompt_tokens: resp.usage.prompt_tokens as u32,
-            total_tokens: resp.usage.total_tokens as u32,
-        };
-
-        crate::provider::types::EmbeddingResponse {
-            object: resp.object,
-            data,
-            model: resp.model,
-            usage,
-        }
-    }
+/// Helper function to create a new OpenRouter client with custom base URL
+pub fn create_client_with_base_url(
+    api_key: impl Into<String>,
+    base_url: impl Into<String>,
+) -> Result<OpenRouterClient> {
+    OpenRouterClient::with_base_url(api_key, base_url)
 }

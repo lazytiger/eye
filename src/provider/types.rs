@@ -250,7 +250,7 @@ pub struct FunctionDefinition {
     pub strict: Option<bool>,
 }
 
-/// Tool call in assistant messages
+/// Tool call in assistant message
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ToolCall {
     pub id: String,
@@ -494,133 +494,6 @@ bitflags::bitflags! {
         const JSON_MODE = 1 << 7;
         const STREAMING = 1 << 8;
     }
-}
-
-// ==========================================
-// Backward Compatibility Types
-// ==========================================
-// These types and functions maintain compatibility with existing code
-
-/// Role enum for backward compatibility
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum Role {
-    System,
-    User,
-    Assistant,
-    Tool,
-}
-
-impl Role {
-    pub fn from_chat_message(msg: &ChatMessage) -> Self {
-        match msg {
-            ChatMessage::System(_) => Role::System,
-            ChatMessage::User(_) => Role::User,
-            ChatMessage::Assistant(_) => Role::Assistant,
-            ChatMessage::Tool(_) => Role::Tool,
-        }
-    }
-
-    pub fn to_chat_message(&self, content: MessageContent, tool_call_id: Option<String>, tool_calls: Option<Vec<ToolCall>>) -> ChatMessage {
-        match self {
-            Role::System => ChatMessage::System(SystemMessage {
-                content,
-                name: None,
-            }),
-            Role::User => ChatMessage::User(UserMessage {
-                content,
-                name: None,
-            }),
-            Role::Assistant => ChatMessage::Assistant(AssistantMessage {
-                content: Some(content),
-                name: None,
-                tool_calls,
-                refusal: None,
-            }),
-            Role::Tool => ChatMessage::Tool(ToolMessage {
-                content,
-                tool_call_id: tool_call_id.unwrap_or_default(),
-            }),
-        }
-    }
-}
-
-/// Content enum for backward compatibility
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(untagged)]
-pub enum Content {
-    /// Simple text content
-    Text(String),
-    /// Array of content parts (for multimodal messages)
-    Parts(Vec<ContentPart>),
-}
-
-impl Content {
-    pub fn to_message_content(self) -> MessageContent {
-        match self {
-            Content::Text(text) => MessageContent::Text(text),
-            Content::Parts(parts) => MessageContent::Parts(parts),
-        }
-    }
-
-    pub fn from_message_content(content: MessageContent) -> Self {
-        match content {
-            MessageContent::Text(text) => Content::Text(text),
-            MessageContent::Parts(parts) => Content::Parts(parts),
-        }
-    }
-}
-
-/// ModelCapabilities for backward compatibility
-pub type ModelCapabilities = ProviderCapabilities;
-
-/// Helper function to convert ChatRequest messages to old format with Role
-pub fn convert_messages_to_old_format(messages: &[ChatMessage]) -> Vec<OldFormatMessage> {
-    messages.iter().map(|msg| {
-        let role = Role::from_chat_message(msg);
-        let content = match msg {
-            ChatMessage::System(s) => Some(Content::from_message_content(s.content.clone())),
-            ChatMessage::User(u) => Some(Content::from_message_content(u.content.clone())),
-            ChatMessage::Assistant(a) => a.content.as_ref().map(|c| Content::from_message_content(c.clone())),
-            ChatMessage::Tool(t) => Some(Content::from_message_content(t.content.clone())),
-        };
-        let tool_call_id = match msg {
-            ChatMessage::Tool(t) => Some(t.tool_call_id.clone()),
-            _ => None,
-        };
-        let tool_calls = match msg {
-            ChatMessage::Assistant(a) => a.tool_calls.clone(),
-            _ => None,
-        };
-        OldFormatMessage {
-            role,
-            content,
-            name: None,
-            tool_calls,
-            tool_call_id,
-        }
-    }).collect()
-}
-
-/// Old format message for backward compatibility
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct OldFormatMessage {
-    pub role: Role,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub content: Option<Content>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_calls: Option<Vec<ToolCall>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_call_id: Option<String>,
-}
-
-pub fn convert_messages_from_old_format(messages: &[OldFormatMessage]) -> Vec<ChatMessage> {
-    messages.iter().map(|msg| {
-        let content = msg.content.clone().map(|c| c.to_message_content()).unwrap_or(MessageContent::Text(String::new()));
-        msg.role.to_chat_message(content, msg.tool_call_id.clone(), msg.tool_calls.clone())
-    }).collect()
 }
 
 // ==========================================
