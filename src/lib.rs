@@ -117,6 +117,63 @@ pub async fn run() -> anyhow::Result<()> {
         config.openrouter.api_key = api_key;
     }
 
+    // Handle subcommands
+    if let Some(command) = cli_args.command {
+        match command {
+            cli::Commands::ListTools => {
+                let tool_manager = crate::tool::ToolManager::new();
+                let tools = tool_manager.list_tools();
+                println!("Available tools:");
+                for tool in tools {
+                    println!("  - {}", tool);
+                }
+                return Ok(());
+            }
+            cli::Commands::ListSkills => {
+                println!("Available skills:");
+                // TODO: List skills when implemented
+                return Ok(());
+            }
+            cli::Commands::Query { query } => {
+                // Single query mode - not implemented yet
+                tracing::info!("Query mode: {}", query);
+                return Ok(());
+            }
+            cli::Commands::Chat { system_prompt: _ } => {
+                // Interactive chat mode - fall through to agent initialization
+            }
+        }
+    }
+
+    // Create provider
+    let provider: std::sync::Arc<dyn crate::provider::Provider> = std::sync::Arc::from(
+        crate::provider::create_provider("openrouter", &cli_args.model, &config.openrouter.api_key)
+            .context("Failed to create provider")?
+    );
+
+    // Create history manager
+    let history = crate::memory::history::HistoryManager::new(provider.clone());
+
+    // Create tool manager (auto-registers built-in tools)
+    let tool_manager = std::sync::Arc::new(crate::tool::ToolManager::new());
+
+    // Create skill manager
+    let skill_manager = std::sync::Arc::new(crate::skill::SkillManager::default());
+
+    // Create interface
+    let interface = crate::interface::create_interface(&config.interface);
+
+    // Create and run agent
+    let agent = crate::agent::Agent::new(
+        provider,
+        history,
+        tool_manager,
+        skill_manager,
+        std::sync::Arc::from(interface),
+    );
+
+    agent.run().await?;
+
     tracing::info!("Eye Personal Intelligent Assistant has exited");
     Ok(())
 }

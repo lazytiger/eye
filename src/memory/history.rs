@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 
 pub struct HistoryManagerInner {
     messages: Vec<ChatMessage>,
-    summary_provider: Box<dyn Provider>,
+    summary_provider: Arc<dyn Provider>,
     system: ChatMessage,
     user: ChatMessage,
 }
@@ -17,7 +17,7 @@ pub struct HistoryManager(Arc<RwLock<HistoryManagerInner>>);
 impl HistoryManager {
     const MIN_HISTORY_SIZE: usize = 20;
 
-    pub fn new(provider: Box<dyn Provider>) -> Self {
+    pub fn new(provider: Arc<dyn Provider>) -> Self {
         Self(Arc::new(RwLock::new(HistoryManagerInner {
             messages: Vec::new(),
             summary_provider: provider,
