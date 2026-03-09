@@ -3,16 +3,16 @@
 //! This module provides the core abstractions for tools that can be invoked by LLMs.
 //! Tools are capabilities that models can use to perform actions in the real world.
 
+use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use anyhow::Result;
 
 /// Represents the outcome of a tool execution
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ExecuteResult {
     /// The execution was successful. Contains the result data.
-    Success(Value),
+    Success(MessageContent),
     /// The execution failed. Contains the error message or details.
     Failure(String),
 }
@@ -26,26 +26,6 @@ pub struct ToolDefinition {
     pub description: String,
     /// JSON Schema for the arguments the tool accepts
     pub parameters: Value,
-}
-
-/// Represents a request from the LLM to execute a tool
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolCall {
-    /// Unique identifier for this tool call
-    pub id: String,
-    /// Name of the tool to execute
-    pub name: String,
-    /// Arguments for the tool (JSON object)
-    pub arguments: Value,
-}
-
-/// Represents the result of a tool execution to be sent back to the LLM
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolOutput {
-    /// Matches the ToolCall id
-    pub id: String,
-    /// Stringified JSON or text result
-    pub content: String,
 }
 
 /// Core trait for tools that can be invoked by LLMs
@@ -66,7 +46,7 @@ pub trait Tool: Send + Sync {
     /// Executes the tool logic with the given arguments.
     /// Returns an ExecuteResult which can be Success or Failure.
     async fn execute(&self, args: Value) -> Result<ExecuteResult>;
-    
+
     /// Returns the independent definition of the tool.
     fn definition(&self) -> ToolDefinition {
         ToolDefinition {
@@ -92,11 +72,66 @@ pub mod web_fetch;
 /// Re-export shell tool
 pub use shell::ShellTool;
 
+
 /// Re-export time tool
 pub use time::TimeTool;
+
 
 /// Re-export search tool
 pub use search::SearchTool;
 
+
+use crate::provider::MessageContent;
 /// Re-export web fetch tool
 pub use web_fetch::WebFetchTool;
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+/// ToolManager - manages registered tools and provides execution capabilities
+#[derive(Default)]
+pub struct ToolManager {
+    tools: HashMap<String, Arc<dyn Tool>>,
+}
+
+impl ToolManager {
+    /// Create a new ToolManager
+    pub fn new() -> Self {
+        Self {
+            tools: HashMap::new(),
+        }
+    }
+
+    /// Register a tool
+    pub fn register_tool(&mut self, tool: Arc<dyn Tool>) {
+        self.tools.insert(tool.name().to_string(), tool);
+    }
+
+    /// Get a tool by name
+    pub fn get_tool(&self, name: &str) -> Option<Arc<dyn Tool>> {
+        self.tools.get(name).cloned()
+    }
+
+    /// List all registered tool names
+    pub fn list_tools(&self) -> Vec<String> {
+        self.tools.keys().cloned().collect()
+    }
+
+    /// Check if a tool is registered
+    pub fn has_tool(&self, name: &str) -> bool {
+        self.tools.contains_key(name)
+    }
+
+    /// Get all tool definitions
+    pub fn get_tool_definitions(&self) -> Vec<ToolDefinition> {
+        self.tools.values().map(|t| t.definition()).collect()
+    }
+
+    /// Execute a tool by name with the given arguments
+    pub async fn execute_tool(&self, name: &str, args: Value) -> Result<ExecuteResult> {
+        let tool = self
+            .get_tool(name)
+            .ok_or_else(|| anyhow::anyhow!("Tool not found: {}", name))?;
+        tool.execute(args).await
+    }
+}

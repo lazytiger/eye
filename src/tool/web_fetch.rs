@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use anyhow::Result;
 use html2text;
 
+use crate::provider::MessageContent;
 use crate::tool::{ExecuteResult, Tool};
 
 /// Web Fetch tool that retrieves webpage content and converts to markdown
@@ -78,7 +79,7 @@ impl Tool for WebFetchTool {
         if url == "https://example.com/blog/post-1" {
             let mock_content = "# Blog Post Title\n\nThis is the content of the blog post in markdown format. It contains information about various topics.\n\n## Section 1\n\nHere's some detailed content about the first section of the blog post. It includes important information that the LLM might need to understand the context.\n\n## Section 2\n\nAnother section with additional details. This could include examples, code snippets, or other relevant content.\n\n### Sub-section\n\nEven more specific information about a particular topic within this section.\n\n## Conclusion\n\nA summary of the key points covered in the blog post. This provides closure and may offer additional recommendations.";
             
-            return Ok(ExecuteResult::Success(Value::String(mock_content.to_string())));
+            return Ok(ExecuteResult::Success(MessageContent::Text(mock_content.to_string())));
         }
 
         // For real URLs, we need to make an actual HTTP request and convert HTML to markdown
@@ -108,7 +109,7 @@ impl Tool for WebFetchTool {
             markdown_content
         );
 
-        Ok(ExecuteResult::Success(Value::String(simplified_content)))
+        Ok(ExecuteResult::Success(MessageContent::Text(simplified_content)))
     }
 }
 

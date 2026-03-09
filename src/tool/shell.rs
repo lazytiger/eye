@@ -5,7 +5,8 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use anyhow::Result;
-use super::{Tool, ExecuteResult};
+use super::{ExecuteResult, Tool};
+use crate::provider::MessageContent;
 
 /// Shell tool for executing commands
 pub struct ShellTool;
@@ -48,9 +49,9 @@ impl Tool for ShellTool {
 
         // TODO: Implement actual shell command execution
         // For now, return a mock result
-        Ok(ExecuteResult::Success(json!({
+        Ok(ExecuteResult::Success(MessageContent::Text(json!({
             "output": format!("Executed command: {}", command),
             "exit_code": 0
-        })))
+        }).to_string())))
     }
 }

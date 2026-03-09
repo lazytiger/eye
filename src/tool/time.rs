@@ -5,6 +5,7 @@ use chrono::Local;
 use serde_json::{json, Value};
 use anyhow::Result;
 
+use crate::provider::MessageContent;
 use crate::tool::{ExecuteResult, Tool};
 
 /// Time tool that returns the current local time
@@ -48,11 +49,11 @@ impl Tool for TimeTool {
     async fn execute(&self, _args: Value) -> Result<ExecuteResult> {
         // Get current local time
         let current_time = Local::now();
-        
+
         // Convert to string using chrono's default format
         let time_str = current_time.to_string();
-        
-        Ok(ExecuteResult::Success(Value::String(time_str)))
+
+        Ok(ExecuteResult::Success(MessageContent::Text(time_str)))
     }
 }
 

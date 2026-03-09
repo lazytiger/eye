@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use anyhow::Result;
 
+use crate::provider::MessageContent;
 use crate::tool::{ExecuteResult, Tool};
 
 /// Search tool that retrieves real-time information from the web
@@ -87,9 +88,11 @@ impl Tool for SearchTool {
 
         let results_to_return = &mock_results[..num_results.min(mock_results.len())];
 
-        Ok(ExecuteResult::Success(Value::Array(
-            results_to_return.iter().cloned().collect()
-        )))
+        // Convert results to JSON string for MessageContent
+        let results_json = serde_json::to_string(results_to_return)
+            .unwrap_or_else(|_| "[]".to_string());
+
+        Ok(ExecuteResult::Success(MessageContent::Text(results_json)))
     }
 }
 
