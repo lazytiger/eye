@@ -69,6 +69,12 @@ pub mod search;
 /// Web Fetch tool for retrieving webpage content
 pub mod web_fetch;
 
+/// File Read tool for reading file contents
+pub mod file_read;
+
+/// File Write tool for writing content to files
+pub mod file_write;
+
 /// Re-export shell tool
 pub use shell::ShellTool;
 
@@ -84,6 +90,12 @@ pub use search::SearchTool;
 use crate::provider::MessageContent;
 /// Re-export web fetch tool
 pub use web_fetch::WebFetchTool;
+
+/// Re-export file read tool
+pub use file_read::FileReadTool;
+
+/// Re-export file write tool
+pub use file_write::FileWriteTool;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -105,6 +117,8 @@ impl ToolManager {
         manager.register_tool(Arc::new(TimeTool::new()));
         manager.register_tool(Arc::new(SearchTool::new()));
         manager.register_tool(Arc::new(WebFetchTool::new()));
+        manager.register_tool(Arc::new(FileReadTool::new()));
+        manager.register_tool(Arc::new(FileWriteTool::new()));
         manager
     }
 
