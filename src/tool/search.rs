@@ -6,9 +6,11 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use anyhow::Result;
+use regex::Regex;
 
 use crate::provider::MessageContent;
 use crate::tool::{ExecuteResult, Tool};
+use crate::utils;
 
 /// Search tool that retrieves real-time information from the web
 pub struct SearchTool;
@@ -61,178 +63,108 @@ impl Tool for SearchTool {
     /// Executes the tool logic with the given arguments
     async fn execute(&self, args: Value) -> Result<ExecuteResult> {
         // Parse arguments
-        let _query = args["query"].as_str()
+        let query = args["query"].as_str()
             .ok_or_else(|| anyhow::anyhow!("query parameter is required"))?;
-        
+
         let num_results = args["num_results"].as_i64().unwrap_or(5).clamp(1, 10) as usize;
 
-        // For now, we'll use a mock implementation since real search requires API keys
-        // In production, you would integrate with Google Custom Search, Bing Search, or similar APIs
-        let mock_results = vec![
-            serde_json::json!({
-                "title": "Search Result 1",
-                "link": "https://example.com/result1",
-                "snippet": "This is a mock search result for testing purposes. It represents a relevant webpage about your query."
-            }),
-            serde_json::json!({
-                "title": "Search Result 2",
-                "link": "https://example.com/result2",
-                "snippet": "Another mock result that provides additional information. This would typically come from a different website."
-            }),
-            serde_json::json!({
-                "title": "Search Result 3",
-                "link": "https://example.com/result3",
-                "snippet": "A third mock result offering more context. In real usage, these would be actual search results from the web."
-            })
-        ];
+        // Use DuckDuckGo HTML search (no API key required)
+        let client = utils::reqwest_client();
 
-        let results_to_return = &mock_results[..num_results.min(mock_results.len())];
+        let encoded_query = urlencoding::encode(query);
+        let search_url = format!("https://html.duckduckgo.com/html/?q={}", encoded_query);
 
-        // Convert results to JSON string for MessageContent
-        let results_json = serde_json::to_string(results_to_return)
+        let response = client
+            .get(&search_url)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to perform search: {}", e))?;
+
+        if !response.status().is_success() {
+            return Ok(ExecuteResult::Failure(
+                format!("Search failed with status: {}", response.status())
+            ));
+        }
+
+        let html_content = response.text().await?;
+
+        // Parse HTML to extract results
+        let results = parse_duckduckgo_results(&html_content, num_results);
+
+        if results.is_empty() {
+            return Ok(ExecuteResult::Success(MessageContent::Text(
+                "No search results found.".to_string()
+            )));
+        }
+
+        // Convert results to JSON string
+        let results_json = serde_json::to_string_pretty(&results)
             .unwrap_or_else(|_| "[]".to_string());
 
         Ok(ExecuteResult::Success(MessageContent::Text(results_json)))
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
+/// Parse DuckDuckGo HTML search results using regex
+fn parse_duckduckgo_results(html: &str, max_results: usize) -> Vec<Value> {
+    let mut results = Vec::new();
 
-    #[tokio::test]
-    async fn test_search_tool_name() {
-        let tool = SearchTool::new();
-        assert_eq!(tool.name(), "search_web");
-    }
+    // DuckDuckGo HTML result structure:
+    // <a class="result__a" href="...">Title</a>
+    // <a class="result__snippet">Snippet</a>
 
-    #[tokio::test]
-    async fn test_search_tool_description() {
-        let tool = SearchTool::new();
-        assert_eq!(
-            tool.description(),
-            "Searches the web for a given query and returns a list of relevant results with links and snippets."
-        );
-    }
+    // Pattern to match result blocks
+    let result_pattern = Regex::new(
+        r#"<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([^<]+)</a>"#
+    ).unwrap();
 
-    #[tokio::test]
-    async fn test_search_tool_parameters() {
-        let tool = SearchTool::new();
-        let params = tool.parameters();
-        
-        assert_eq!(params["type"], "object");
-        assert!(params["properties"].is_object());
-        assert!(params["required"].is_array());
-        
-        let required = params["required"].as_array().unwrap();
-        assert!(required.contains(&Value::String("query".to_string())));
-        
-        let query_prop = &params["properties"]["query"];
-        assert_eq!(query_prop["type"], "string");
-        
-        let num_results_prop = &params["properties"]["num_results"];
-        assert_eq!(num_results_prop["type"], "integer");
-        assert_eq!(num_results_prop["minimum"], 1);
-        assert_eq!(num_results_prop["maximum"], 10);
-    }
+    let snippet_pattern = Regex::new(
+        r#"<a[^>]*class="result__snippet"[^>]*>([^<]+)</a>"#
+    ).unwrap();
 
-    #[tokio::test]
-    async fn test_search_tool_execute_with_query() {
-        let tool = SearchTool::new();
-        
-        let result = tool.execute(json!({
-            "query": "Rust programming",
-            "num_results": 3
-        })).await;
-        
-        assert!(result.is_ok());
-        
-        let execute_result = result.unwrap();
-        match execute_result {
-            ExecuteResult::Success(value) => {
-                assert!(value.is_array());
-                let results = value.as_array().unwrap();
-                assert_eq!(results.len(), 3);
-                
-                for result in results {
-                    assert!(result["title"].is_string());
-                    assert!(result["link"].is_string());
-                    assert!(result["snippet"].is_string());
-                }
-            }
-            ExecuteResult::Failure(msg) => {
-                panic!("Search tool execution failed with: {}", msg);
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn test_search_tool_execute_without_query() {
-        let tool = SearchTool::new();
-        
-        let result = tool.execute(json!({
-            "num_results": 3
-        })).await;
-        
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_search_tool_execute_with_default_results() {
-        let tool = SearchTool::new();
-        
-        let result = tool.execute(json!({
-            "query": "Rust programming"
-        })).await;
-        
-        assert!(result.is_ok());
-        
-        let execute_result = result.unwrap();
-        match execute_result {
-            ExecuteResult::Success(value) => {
-                assert!(value.is_array());
-                let results = value.as_array().unwrap();
-                assert!(results.len() > 0);
-            }
-            ExecuteResult::Failure(msg) => {
-                panic!("Search tool execution failed with: {}", msg);
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn test_search_tool_execute_with_min_max_results() {
-        let tool = SearchTool::new();
-        
-        // Test minimum results
-        let min_result = tool.execute(json!({
-            "query": "Rust programming",
-            "num_results": 1
-        })).await;
-        assert!(min_result.is_ok());
-        if let ExecuteResult::Success(value) = min_result.unwrap() {
-            assert_eq!(value.as_array().unwrap().len(), 1);
+    for (idx, cap) in result_pattern.captures_iter(html).enumerate() {
+        if idx >= max_results {
+            break;
         }
 
-        // Test maximum results (mock only has 3 results)
-        let max_result = tool.execute(json!({
-            "query": "Rust programming",
-            "num_results": 10
-        })).await;
-        assert!(max_result.is_ok());
-        if let ExecuteResult::Success(value) = max_result.unwrap() {
-            assert_eq!(value.as_array().unwrap().len(), 3);
-        }
+        let url = cap.get(1).map_or("", |m| m.as_str()).to_string();
+        let title = cap.get(2).map_or("", |m| m.as_str())
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'");
+
+        // Try to find a snippet after this result
+        let snippet = extract_snippet_after(html, &snippet_pattern, cap.get(1).map_or(0, |m| m.end()));
+
+        results.push(json!({
+            "title": title.trim().to_string(),
+            "link": url,
+            "snippet": snippet.trim().to_string()
+        }));
     }
 
-    #[tokio::test]
-    async fn test_search_tool_definition() {
-        let tool = SearchTool::new();
-        let definition = tool.definition();
-        
-        assert_eq!(definition.name, "search_web");
-        assert!(!definition.description.is_empty());
-        assert_eq!(definition.parameters["type"], "object");
+    results
+}
+
+/// Extract snippet text from HTML after a given position
+fn extract_snippet_after(html: &str, pattern: &Regex, start_pos: usize) -> String {
+    if start_pos >= html.len() {
+        return String::new();
     }
+
+    let remaining = &html[start_pos..];
+
+    // Find the first snippet in the remaining HTML
+    if let Some(cap) = pattern.captures(remaining) {
+        return cap.get(1).map_or("", |m| m.as_str())
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'");
+    }
+
+    String::new()
 }

@@ -3,13 +3,13 @@
 //! This tool fetches the content of web pages and converts them to readable markdown format.
 
 use async_trait::async_trait;
-use reqwest;
 use serde_json::{json, Value};
 use anyhow::Result;
 use html2text;
 
 use crate::provider::MessageContent;
 use crate::tool::{ExecuteResult, Tool};
+use crate::utils;
 
 /// Web Fetch tool that retrieves webpage content and converts to markdown
 pub struct WebFetchTool;
@@ -30,9 +30,8 @@ impl Default for WebFetchTool {
 impl WebFetchTool {
     /// Converts HTML content to readable Markdown format
     fn html_to_markdown(html: &str) -> String {
-        // For testing purposes, we'll use a simple implementation
-        // In production, you would use html2text or similar libraries
-        html2text::from_read(html.as_bytes(), 80)
+        // html2text 0.16+ returns a Result
+        html2text::from_read(html.as_bytes(), 80).unwrap_or_else(|_| html.to_string())
     }
 }
 
@@ -75,19 +74,9 @@ impl Tool for WebFetchTool {
             ));
         }
 
-        // For testing purposes, we'll use a mock implementation for certain URLs
-        if url == "https://example.com/blog/post-1" {
-            let mock_content = "# Blog Post Title\n\nThis is the content of the blog post in markdown format. It contains information about various topics.\n\n## Section 1\n\nHere's some detailed content about the first section of the blog post. It includes important information that the LLM might need to understand the context.\n\n## Section 2\n\nAnother section with additional details. This could include examples, code snippets, or other relevant content.\n\n### Sub-section\n\nEven more specific information about a particular topic within this section.\n\n## Conclusion\n\nA summary of the key points covered in the blog post. This provides closure and may offer additional recommendations.";
-            
-            return Ok(ExecuteResult::Success(MessageContent::Text(mock_content.to_string())));
-        }
-
         // For real URLs, we need to make an actual HTTP request and convert HTML to markdown
-        // This is a simplified implementation that fetches the raw HTML
-        // In production, you would use a library like html2text or similar
-        let client = reqwest::Client::new();
+        let client = utils::reqwest_client();
         let response = client.get(url)
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
             .send()
             .await?;
 
@@ -98,18 +87,18 @@ impl Tool for WebFetchTool {
         }
 
         let html_content = response.text().await?;
-        
-        // For now, we'll return a simplified version of the content
-        // In production, you would extract relevant content and convert to markdown
-        let markdown_content = WebFetchTool::html_to_markdown(&html_content);
-        let simplified_content = format!(
-            "Webpage content from {} ({}) characters)\n\n{}",
-            url,
-            html_content.len(),
-            markdown_content
-        );
 
-        Ok(ExecuteResult::Success(MessageContent::Text(simplified_content)))
+        // Convert HTML to readable text
+        let text_content = WebFetchTool::html_to_markdown(&html_content);
+
+        // Truncate if too long (max 10000 chars)
+        let truncated = if text_content.len() > 10000 {
+            format!("{}...\n[Content truncated]", &text_content[..10000])
+        } else {
+            text_content
+        };
+
+        Ok(ExecuteResult::Success(MessageContent::Text(truncated)))
     }
 }
 
@@ -152,23 +141,25 @@ mod tests {
     #[tokio::test]
     async fn test_web_fetch_tool_execute_with_valid_url() {
         let tool = WebFetchTool::new();
-        
+
         let result = tool.execute(json!({
-            "url": "https://example.com/blog/post-1"
+            "url": "https://example.com"
         })).await;
-        
+
         assert!(result.is_ok());
-        
+
         let execute_result = result.unwrap();
         match execute_result {
-            ExecuteResult::Success(value) => {
-                assert!(value.is_string());
-                let content = value.as_str().unwrap();
-                
-                // Check that content contains expected elements
-                assert!(content.contains("Blog Post Title"));
-                assert!(content.contains("markdown format"));
-                assert!(content.contains("Section 1"));
+            ExecuteResult::Success(content) => {
+                match content {
+                    MessageContent::Text(content_str) => {
+                        // Check that content contains expected elements
+                        assert!(content_str.contains("Example"));
+                    }
+                    MessageContent::Parts(_) => {
+                        panic!("Expected text content, got parts");
+                    }
+                }
             }
             ExecuteResult::Failure(msg) => {
                 panic!("Web fetch tool execution failed with: {}", msg);
@@ -218,13 +209,16 @@ mod tests {
         
         let execute_result = result.unwrap();
         match execute_result {
-            ExecuteResult::Success(value) => {
-                assert!(value.is_string());
-                let content = value.as_str().unwrap();
-                
-                // Check that content contains some expected information
-                assert!(content.contains("https://example.com"));
-                assert!(content.contains("characters"));
+            ExecuteResult::Success(content) => {
+                match content {
+                    MessageContent::Text(content_str) => {
+                        // Content should contain expected information for example.com
+                        assert!(content_str.contains("Example Domain") || content_str.contains("example"));
+                    }
+                    MessageContent::Parts(_) => {
+                        panic!("Expected text content, got parts");
+                    }
+                }
             }
             ExecuteResult::Failure(msg) => {
                 panic!("Web fetch tool execution failed with: {}", msg);

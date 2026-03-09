@@ -5,6 +5,7 @@
 use super::chat_types::*;
 use super::embedding_types::*;
 use anyhow::{Result, anyhow};
+use crate::utils;
 
 /// OpenRouter API client configuration
 #[derive(Clone, Debug)]
@@ -47,20 +48,12 @@ impl OpenRouterConfig {
 #[derive(Clone)]
 pub struct OpenRouterClient {
     config: OpenRouterConfig,
-    http_client: reqwest::Client,
 }
 
 impl OpenRouterClient {
     pub fn new(config: OpenRouterConfig) -> Result<Self> {
-        let mut builder = reqwest::Client::builder();
-        if let Some(timeout) = config.timeout_secs {
-            builder = builder.timeout(std::time::Duration::from_secs(timeout));
-        }
-        let http_client = builder.build()?;
-
         Ok(Self {
             config,
-            http_client,
         })
     }
 
@@ -89,8 +82,7 @@ impl OpenRouterClient {
     pub async fn chat(&self, request: ChatRequest) -> Result<ChatResponse> {
         let url = self.build_url("/chat/completions");
 
-        let response = self
-            .http_client
+        let response = utils::reqwest_client()
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key()))
             .header("Content-Type", "application/json")
@@ -111,8 +103,7 @@ impl OpenRouterClient {
     pub async fn embeddings(&self, request: EmbeddingsRequest) -> Result<EmbeddingsResponse> {
         let url = self.build_url("/embeddings");
 
-        let response = self
-            .http_client
+        let response = utils::reqwest_client()
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key()))
             .header("Content-Type", "application/json")
