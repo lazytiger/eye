@@ -112,7 +112,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_history() -> anyhow::Result<()> {
-        let history = HistoryManager::new(create_provider("deepseek", "deepseek-chat", "")?);
+        let history = HistoryManager::new(create_provider("deepseek", "deepseek-chat", "")?.into());
         let provider = create_provider("deepseek", "deepseek-chat", "")?;
         println!("test begin");
         let mut request = ChatRequest::default();

@@ -100,17 +100,20 @@ mod tests {
         
         // Should be a Success variant
         match execute_result {
-            ExecuteResult::Success(value) => {
-                // Value should be a string
-                assert!(value.is_string());
-                
-                // String should not be empty
-                let time_str = value.as_str().unwrap();
-                assert!(!time_str.is_empty());
-                
-                // Should contain date and time components
-                // (basic validation that it looks like a timestamp)
-                assert!(time_str.contains('-') || time_str.contains(':'));
+            ExecuteResult::Success(content) => {
+                // Content should be Text variant
+                match content {
+                    MessageContent::Text(time_str) => {
+                        // String should not be empty
+                        assert!(!time_str.is_empty());
+
+                        // Should contain date and time components
+                        assert!(time_str.contains('-') || time_str.contains(':'));
+                    }
+                    MessageContent::Parts(_) => {
+                        panic!("Expected text content, got parts");
+                    }
+                }
             }
             ExecuteResult::Failure(_) => {
                 panic!("Time tool execution should not fail");

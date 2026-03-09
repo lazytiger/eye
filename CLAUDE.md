@@ -95,6 +95,8 @@ Uses `eye.toml` with clap overrides. Key sections:
 - **Testing**: Unit tests in source files, integration tests in `tests/`
 - **API keys**: Use environment variables (`OPENROUTER_API_KEY`, `DEEPSEEK_API_KEY`, etc.)
 - **Modules**: <500 lines
+- **Dependencies**: Search in `crates.io` for libraries that fit the project needs most and use the latest version.
+- **API**: Search in `docs.rs` for Rust library documentation when method signatures don't match.
 
 ## Running Integration Tests
 

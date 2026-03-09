@@ -95,11 +95,11 @@ impl Agent {
             // 5. Get assistant message
             let assistant_message = &response.choices.first().unwrap().message;
 
+            // 6. Record response to history
+            self.history.on_response(&response).await;
+
             match &assistant_message.tool_calls {
                 Some(tool_calls) if !tool_calls.is_empty() => {
-                    // Has tool calls - add assistant message to history first
-                    self.history.on_response(&response).await;
-
                     // Execute all tool calls
                     self.execute_tool_calls(tool_calls).await?;
 
@@ -109,8 +109,6 @@ impl Agent {
                 }
                 _ => {
                     // No tool calls, send final response to user
-                    // 6. Record response to history
-                    self.history.on_response(&response).await;
 
                     if let Some(content) = &assistant_message.content {
                         // Convert MessageContent to string for display
