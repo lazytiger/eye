@@ -4,7 +4,10 @@
       "Bash(cargo check:*)",
       "Bash(cargo build:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(git push:*)"
     ]
   }
 }

@@ -3,7 +3,7 @@
 //! This module provides the OpenAI-compatible provider with API type definitions and conversions.
 
 mod convert;
-mod types;
+pub mod types;
 
 pub use types::*;
 

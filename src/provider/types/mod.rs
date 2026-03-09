@@ -6,9 +6,9 @@
 //! These types serve as the common interface layer - provider-specific implementations
 //! will convert from/to these types.
 
-mod capabilities;
-mod chat;
-mod embedding;
+pub mod capabilities;
+pub mod chat;
+pub mod embedding;
 mod helpers;
 
 pub use capabilities::*;
