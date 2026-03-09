@@ -46,6 +46,11 @@ impl Agent {
 
     /// Run the agent's main loop
     pub async fn run(&self) -> Result<()> {
+        // Send welcome message
+        self.interface
+            .send("Welcome! I'm Eye, your personal AI assistant. How can I help you today?".to_string())
+            .await?;
+
         // Create channel for receiving user input
         let (tx, mut rx) = mpsc::channel::<String>(32);
 
