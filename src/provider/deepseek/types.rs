@@ -46,9 +46,10 @@ pub struct ChatRequest {
 
 /// Model enum
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(rename_all = "kebab-case")]
 pub enum Model {
+    #[serde(rename = "deepseek-chat")]
     DeepSeekChat,
+    #[serde(rename = "deepseek-reasoner")]
     DeepSeekReasoner,
 }
 
