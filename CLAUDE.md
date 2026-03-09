@@ -25,7 +25,8 @@ cargo clippy
 
 ## Architecture Overview
 
-Eye is a personal intelligent assistant that enables LLMs to interact with the real world through tool calling. The architecture follows a clean modular design:
+Eye is a personal intelligent assistant that enables LLMs to interact with the real world through tool calling. The
+architecture follows a clean modular design:
 
 ```
 src/
@@ -55,25 +56,32 @@ src/
 ## Core Abstractions
 
 ### Provider Trait (`src/provider/mod.rs`)
+
 All LLM providers implement this trait:
+
 - `chat()` - Send chat completion requests
 - `embedding()` - Generate embeddings
 - `capabilities()` - Check model features (vision, function calling)
 - `max_context_length()` - Get token limit
 
 Factory function: `create_provider(name, model, api_key)` supports:
+
 - Built-in: `"openai"`, `"openrouter"`, `"deepseek"`
 - Custom: `"name:https://endpoint.com/v1"` format
 
 ### Tool Trait (`src/tool/mod.rs`)
+
 All tools implement:
+
 - `name()`, `description()`, `parameters()` - Tool metadata
 - `execute(&self, args: Value) -> Result<ExecuteResult>` - Execution logic
 
 Tools are registered and passed to providers for function calling.
 
 ### Configuration
+
 Uses `eye.toml` with clap overrides. Key sections:
+
 - `[openrouter]` - API key, endpoint, default model
 - `[model]` - temperature, max_tokens, stream
 - `[tools]` - enabled tools list
@@ -86,10 +94,12 @@ Uses `eye.toml` with clap overrides. Key sections:
 - **Error handling**: Use `anyhow::Result`, return `ExecuteResult::Success/Failure` for tool outcomes
 - **Testing**: Unit tests in source files, integration tests in `tests/`
 - **API keys**: Use environment variables (`OPENROUTER_API_KEY`, `DEEPSEEK_API_KEY`, etc.)
+- **Modules**: <500 lines
 
 ## Running Integration Tests
 
 Integration tests require real API keys:
+
 ```bash
 # Set API key
 $env:OPENROUTER_API_KEY="your-key"

@@ -31,7 +31,7 @@ pub trait Provider: Send + Sync {
 
     /// Returns the capabilities of the currently configured model (e.g., vision, function calling).
     /// This helps the client know what features are available without try-and-error.
-    fn capabilities(&self) -> ModelCapabilities;
+    fn capabilities(&self) -> ProviderCapabilities;
 
     /// Returns the maximum context length (in tokens) for the currently configured model.
     /// Used for context window management to avoid overflow errors.
