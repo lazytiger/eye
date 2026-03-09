@@ -75,6 +75,9 @@ pub mod file_read;
 /// File Write tool for writing content to files
 pub mod file_write;
 
+/// File Search tool for finding files by pattern
+pub mod file_search;
+
 /// Re-export shell tool
 pub use shell::ShellTool;
 
@@ -96,6 +99,9 @@ pub use file_read::FileReadTool;
 
 /// Re-export file write tool
 pub use file_write::FileWriteTool;
+
+/// Re-export file search tool
+pub use file_search::FileSearchTool;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -119,6 +125,7 @@ impl ToolManager {
         manager.register_tool(Arc::new(WebFetchTool::new()));
         manager.register_tool(Arc::new(FileReadTool::new()));
         manager.register_tool(Arc::new(FileWriteTool::new()));
+        manager.register_tool(Arc::new(FileSearchTool::new()));
         manager
     }
 
