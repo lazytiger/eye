@@ -5,7 +5,7 @@
 use super::Interface;
 use crate::config::settings::InterfaceConfig;
 use anyhow::Result;
-use console::Term;
+use console::{style, Term};
 use tokio::sync::mpsc::Sender;
 
 /// CLI interface
@@ -33,7 +33,9 @@ impl Interface for CliInterface {
     }
 
     async fn send(&self, message: String) -> Result<()> {
-        self.term.write_line(&message)?;
+        // Use console style prefix similar to Claude Code
+        // ">" character with cyan color for assistant messages
+        self.term.write_line(&format!("{} {}", style(">").cyan().bold(), message))?;
         Ok(())
     }
 
