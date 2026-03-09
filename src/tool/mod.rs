@@ -95,11 +95,17 @@ pub struct ToolManager {
 }
 
 impl ToolManager {
-    /// Create a new ToolManager
+    /// Create a new ToolManager with all built-in tools registered
     pub fn new() -> Self {
-        Self {
+        let mut manager = Self {
             tools: HashMap::new(),
-        }
+        };
+        // Register all built-in tools
+        manager.register_tool(Arc::new(ShellTool::new()));
+        manager.register_tool(Arc::new(TimeTool::new()));
+        manager.register_tool(Arc::new(SearchTool::new()));
+        manager.register_tool(Arc::new(WebFetchTool::new()));
+        manager
     }
 
     /// Register a tool

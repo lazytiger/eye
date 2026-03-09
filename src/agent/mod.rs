@@ -9,9 +9,7 @@
 
 use crate::interface::Interface;
 use crate::memory::history::HistoryManager;
-use crate::provider::{
-    ChatRequest, MessageContent, Provider, Tool, ToolCall as ProviderToolCall,
-};
+use crate::provider::{ChatRequest, MessageContent, Provider, Tool, ToolCall as ProviderToolCall};
 use crate::skill::SkillManager;
 use crate::tool::{ExecuteResult, ToolManager};
 use anyhow::Result;
@@ -86,10 +84,7 @@ impl Agent {
             // 4. Send request to LLM
             let response = self.provider.chat(request).await?;
 
-            // 5. Record response to history
-            self.history.on_response(&response).await;
-
-            // 6. Check for tool calls
+            // 5. Check for tool calls
             let assistant_message = &response.choices.first().unwrap().message;
 
             match &assistant_message.tool_calls {
@@ -103,6 +98,9 @@ impl Agent {
                 }
                 _ => {
                     // No tool calls, send final response to user
+                    // 6. Record response to history
+                    self.history.on_response(&response).await;
+
                     if let Some(content) = &assistant_message.content {
                         // Convert MessageContent to string for display
                         let content_str = match content {
