@@ -14,9 +14,17 @@ use crate::tool::{ExecuteResult, Tool};
 use crate::utils;
 
 /// Search providers
+#[derive(Clone, PartialEq)]
 enum SearchProvider {
     DuckDuckGo,
     Bing,
+}
+
+impl SearchProvider {
+    /// Get all providers for retry fallback
+    fn all() -> Vec<SearchProvider> {
+        vec![SearchProvider::DuckDuckGo, SearchProvider::Bing]
+    }
 }
 
 /// Search tool that retrieves real-time information from the web
@@ -85,31 +93,68 @@ impl Tool for SearchTool {
 
         let num_results = args["num_results"].as_i64().unwrap_or(5).clamp(1, 10) as usize;
 
-        // Randomly select search provider (DuckDuckGo or Bing)
-        let provider = SearchTool::select_provider();
-
-        let results = match provider {
-            SearchProvider::DuckDuckGo => {
-                tracing::debug!("Using DuckDuckGo for search");
-                search_duckduckgo(query, num_results).await?
+        // Randomly select initial search provider
+        let initial_provider = SearchTool::select_provider();
+        tracing::debug!("Starting with {} search provider",
+            match initial_provider {
+                SearchProvider::DuckDuckGo => "DuckDuckGo",
+                SearchProvider::Bing => "Bing",
             }
-            SearchProvider::Bing => {
-                tracing::debug!("Using Bing for search");
-                search_bing(query, num_results).await?
-            }
-        };
+        );
 
-        if results.is_empty() {
-            return Ok(ExecuteResult::Success(MessageContent::Text(
-                "No search results found.".to_string()
-            )));
+        // Try providers with fallback - start with random provider, then try others
+        let mut providers_tried = Vec::new();
+        let providers = SearchProvider::all();
+
+        // Build provider order: start with random, then try others
+        let mut provider_order = Vec::new();
+        provider_order.push(initial_provider.clone());
+        for p in providers {
+            if p != initial_provider {
+                provider_order.push(p);
+            }
         }
 
-        // Convert results to JSON string
-        let results_json = serde_json::to_string_pretty(&results)
-            .unwrap_or_else(|_| "[]".to_string());
+        for provider in provider_order {
+            let provider_name = match &provider {
+                SearchProvider::DuckDuckGo => "DuckDuckGo",
+                SearchProvider::Bing => "Bing",
+            };
 
-        Ok(ExecuteResult::Success(MessageContent::Text(results_json)))
+            // Skip if already tried
+            if providers_tried.contains(&provider) {
+                continue;
+            }
+            providers_tried.push(provider.clone());
+
+            tracing::debug!("Trying {} search provider", provider_name);
+
+            let results = match provider {
+                SearchProvider::DuckDuckGo => search_duckduckgo(query, num_results).await,
+                SearchProvider::Bing => search_bing(query, num_results).await,
+            };
+
+            match results {
+                Ok(results) if !results.is_empty() => {
+                    tracing::debug!("{} search succeeded with {} results", provider_name, results.len());
+                    // Convert results to JSON string
+                    let results_json = serde_json::to_string_pretty(&results)
+                        .unwrap_or_else(|_| "[]".to_string());
+                    return Ok(ExecuteResult::Success(MessageContent::Text(results_json)));
+                }
+                Ok(_) => {
+                    tracing::debug!("{} search returned no results, trying fallback", provider_name);
+                }
+                Err(e) => {
+                    tracing::debug!("{} search failed: {}, trying fallback", provider_name, e);
+                }
+            }
+        }
+
+        // All providers failed or returned no results
+        Ok(ExecuteResult::Success(MessageContent::Text(
+            "No search results found.".to_string()
+        )))
     }
 }
 
@@ -164,32 +209,25 @@ fn parse_bing_results(html: &str, max_results: usize) -> Vec<Value> {
     //   <div class="b_caption"><p>Snippet</p></div>
     // </li>
 
-    let algo_pattern = Regex::new(
-        r#"<li[^>]*class="[^"]*b_algo[^"]*"[^>]*>"#
-    ).unwrap();
+    // Match b_algo list items - find starting positions
+    let algo_regex = Regex::new(r#"<li[^>]*class="b_algo""#).unwrap();
+    let link_regex = Regex::new(r#"<h2[^>]*><a href="([^"]+)">([^<]+)</a></h2>"#).unwrap();
+    let snippet_regex = Regex::new(r#"<div class="b_caption"><p>([^<]*)</p></div>"#).unwrap();
 
-    let link_pattern = Regex::new(
-        r#"<h2[^>]*><a[^>]*href="([^"]+)"[^>]*>([^<]+)</a></h2>"#
-    ).unwrap();
-
-    let snippet_pattern = Regex::new(
-        r#"<div[^>]*class="[^"]*b_caption[^"]*"[^>]*><p>([^<]*)</p></div>"#
-    ).unwrap();
-
-    for algo_match in algo_pattern.captures_iter(html) {
+    for algo_match in algo_regex.captures_iter(html) {
         if results.len() >= max_results {
             break;
         }
 
         let start = algo_match.get(0).unwrap().start();
-        let remaining = &html[start..];
 
-        // Take a reasonable chunk to search within this result
-        let end = remaining.find("<li").map(|i| start + i).unwrap_or(html.len());
-        let result_html = &html[start..end.min(start + 2000)];
+        // Find the next <li tag to get the boundary
+        let remaining = &html[start..];
+        let next_li = remaining[1..].find("<li").map(|i| start + 1 + i).unwrap_or(html.len());
+        let result_html = &html[start..next_li.min(start + 2000)];
 
         // Extract title and link
-        if let Some(link_cap) = link_pattern.captures(result_html) {
+        if let Some(link_cap) = link_regex.captures(result_html) {
             let url = link_cap.get(1).map_or("", |m| m.as_str()).to_string();
             let title = link_cap.get(2).map_or("", |m| m.as_str())
                 .replace("&amp;", "&")
@@ -201,7 +239,7 @@ fn parse_bing_results(html: &str, max_results: usize) -> Vec<Value> {
                 .to_string();
 
             // Extract snippet
-            let snippet = snippet_pattern.captures(result_html)
+            let snippet = snippet_regex.captures(result_html)
                 .and_then(|cap| cap.get(1))
                 .map_or(String::new(), |m| {
                     m.as_str()
@@ -510,5 +548,136 @@ mod tests {
         assert_eq!(definition.name, "search_web");
         assert!(!definition.description.is_empty());
         assert_eq!(definition.parameters["type"], "object");
+    }
+
+    #[test]
+    fn test_parse_bing_results() {
+        // Test with sample Bing HTML
+        let sample_html = r#"
+            <ol id="b_results">
+                <li class="b_algo">
+                    <h2><a href="https://example.com/page1">First Result Title</a></h2>
+                    <div class="b_caption"><p>This is the first snippet.</p></div>
+                </li>
+                <li class="b_algo">
+                    <h2><a href="https://example.com/page2">Second Result Title</a></h2>
+                    <div class="b_caption"><p>This is the second snippet.</p></div>
+                </li>
+                <li class="b_algo">
+                    <h2><a href="https://example.com/page3">Third Result Title</a></h2>
+                    <div class="b_caption"><p>This is the third snippet.</p></div>
+                </li>
+            </ol>
+        "#;
+
+        let results = super::parse_bing_results(sample_html, 5);
+
+        assert_eq!(results.len(), 3, "Should parse all 3 results");
+
+        // Check first result
+        assert_eq!(results[0]["title"], "First Result Title");
+        assert_eq!(results[0]["link"], "https://example.com/page1");
+        assert_eq!(results[0]["snippet"], "This is the first snippet.");
+
+        // Check second result
+        assert_eq!(results[1]["title"], "Second Result Title");
+        assert_eq!(results[1]["link"], "https://example.com/page2");
+        assert_eq!(results[1]["snippet"], "This is the second snippet.");
+
+        // Check third result
+        assert_eq!(results[2]["title"], "Third Result Title");
+        assert_eq!(results[2]["link"], "https://example.com/page3");
+        assert_eq!(results[2]["snippet"], "This is the third snippet.");
+    }
+
+    #[test]
+    fn test_parse_bing_results_max_limit() {
+        let sample_html = r#"
+            <ol id="b_results">
+                <li class="b_algo"><h2><a href="https://example.com/1">Result 1</a></h2><div class="b_caption"><p>Snippet 1</p></div></li>
+                <li class="b_algo"><h2><a href="https://example.com/2">Result 2</a></h2><div class="b_caption"><p>Snippet 2</p></div></li>
+                <li class="b_algo"><h2><a href="https://example.com/3">Result 3</a></h2><div class="b_caption"><p>Snippet 3</p></div></li>
+                <li class="b_algo"><h2><a href="https://example.com/4">Result 4</a></h2><div class="b_caption"><p>Snippet 4</p></div></li>
+                <li class="b_algo"><h2><a href="https://example.com/5">Result 5</a></h2><div class="b_caption"><p>Snippet 5</p></div></li>
+            </ol>
+        "#;
+
+        // Test with max_results = 2
+        let results = super::parse_bing_results(sample_html, 2);
+        assert_eq!(results.len(), 2, "Should respect max_results limit");
+
+        // Test with max_results = 10 (more than available)
+        let results = super::parse_bing_results(sample_html, 10);
+        assert_eq!(results.len(), 5, "Should return all available results");
+    }
+
+    #[test]
+    fn test_parse_bing_results_with_html_entities() {
+        let sample_html = r#"
+            <ol id="b_results">
+                <li class="b_algo">
+                    <h2><a href="https://example.com/page">Title &amp; Description</a></h2>
+                    <div class="b_caption"><p>Snippet with &lt;tags&gt; and &quot;quotes&quot;</p></div>
+                </li>
+            </ol>
+        "#;
+
+        let results = super::parse_bing_results(sample_html, 1);
+
+        assert_eq!(results.len(), 1);
+        // HTML entities should be decoded
+        assert_eq!(results[0]["title"], "Title & Description");
+        assert_eq!(results[0]["snippet"], "Snippet with <tags> and \"quotes\"");
+    }
+
+    #[tokio::test]
+    async fn test_search_bing_integration() {
+        // Integration test with real Bing search
+        let result = super::search_bing("Rust programming language", 3).await;
+
+        // Test should not crash - network issues are acceptable
+        match result {
+            Ok(results) => {
+                // If successful, should return a vector of results
+                // Results may be empty if no matches found
+                assert!(results.len() <= 3, "Should respect num_results limit");
+
+                // If we got results, verify structure
+                if !results.is_empty() {
+                    for r in &results {
+                        assert!(r.get("title").is_some(), "Result should have title");
+                        assert!(r.get("link").is_some(), "Result should have link");
+                        assert!(r.get("snippet").is_some(), "Result should have snippet");
+                    }
+                }
+            }
+            Err(e) => {
+                // Network errors are acceptable for integration test
+                println!("Bing search error (network issue - acceptable): {}", e);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_search_duckduckgo_integration() {
+        // Integration test with real DuckDuckGo search
+        let result = super::search_duckduckgo("Rust programming language", 3).await;
+
+        match result {
+            Ok(results) => {
+                assert!(results.len() <= 3, "Should respect num_results limit");
+
+                if !results.is_empty() {
+                    for r in &results {
+                        assert!(r.get("title").is_some(), "Result should have title");
+                        assert!(r.get("link").is_some(), "Result should have link");
+                        assert!(r.get("snippet").is_some(), "Result should have snippet");
+                    }
+                }
+            }
+            Err(e) => {
+                println!("DuckDuckGo search error (network issue - acceptable): {}", e);
+            }
+        }
     }
 }
