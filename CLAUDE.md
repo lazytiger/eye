@@ -155,6 +155,10 @@ This is automatically converted to a single `model_routes` entry with name "defa
 1. Environment variable: `PROVIDER_API_KEY` (uppercase provider name, e.g., `OPENROUTER_API_KEY`)
 2. Config file `api_key` field in route
 
+**Search Tool API Keys:**
+- `TAVILY_API_KEY` - Tavily search API (preferred, provides AI-optimized search results)
+- DuckDuckGo and Bing - No API key required (HTML scraping fallback)
+
 **CLI Commands:**
 - `cargo run -- list-routes` - List all configured model routes
 
