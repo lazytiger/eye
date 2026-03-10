@@ -5,6 +5,21 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+use std::time::Duration;
+
+/// Global settings instance
+static SETTINGS: OnceLock<Settings> = OnceLock::new();
+
+/// Set the global settings
+pub fn set_settings(settings: Settings) -> Result<()> {
+    SETTINGS.set(settings).map_err(|_| anyhow::anyhow!("Settings already initialized"))
+}
+
+/// Get the global settings
+pub fn get_settings() -> Result<&'static Settings> {
+    SETTINGS.get().ok_or_else(|| anyhow::anyhow!("Settings not initialized"))
+}
 
 /// Get the default configuration file path
 ///
@@ -52,6 +67,10 @@ pub struct Settings {
     /// Agent configuration
     #[serde(default)]
     pub agent: AgentConfig,
+
+    /// HTTP client configuration
+    #[serde(default)]
+    pub http: HttpClientConfig,
 }
 
 impl Settings {
@@ -299,6 +318,106 @@ fn default_show_timestamp() -> bool {
 
 fn default_enable_colors() -> bool {
     true
+}
+
+/// HTTP client configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HttpClientConfig {
+    /// User agent string
+    #[serde(default = "default_user_agent")]
+    pub user_agent: String,
+
+    /// Connect timeout in seconds
+    #[serde(default = "default_connect_timeout")]
+    pub connect_timeout_secs: u64,
+
+    /// Request timeout in seconds
+    #[serde(default = "default_request_timeout")]
+    pub request_timeout_secs: u64,
+
+    /// Max idle connections per host
+    #[serde(default = "default_pool_max_idle")]
+    pub pool_max_idle_per_host: usize,
+
+    /// Idle timeout in seconds
+    #[serde(default = "default_pool_idle_timeout")]
+    pub pool_idle_timeout_secs: u64,
+
+    /// HTTP2 keep-alive interval in seconds
+    #[serde(default = "default_http2_keep_alive_interval")]
+    pub http2_keep_alive_interval_secs: u64,
+
+    /// HTTP2 keep-alive timeout in seconds
+    #[serde(default = "default_http2_keep_alive_timeout")]
+    pub http2_keep_alive_timeout_secs: u64,
+
+    /// Enable HTTP2 keep-alive while idle
+    #[serde(default = "default_http2_keep_alive_while_idle")]
+    pub http2_keep_alive_while_idle: bool,
+}
+
+impl Default for HttpClientConfig {
+    fn default() -> Self {
+        Self {
+            user_agent: default_user_agent(),
+            connect_timeout_secs: default_connect_timeout(),
+            request_timeout_secs: default_request_timeout(),
+            pool_max_idle_per_host: default_pool_max_idle(),
+            pool_idle_timeout_secs: default_pool_idle_timeout(),
+            http2_keep_alive_interval_secs: default_http2_keep_alive_interval(),
+            http2_keep_alive_timeout_secs: default_http2_keep_alive_timeout(),
+            http2_keep_alive_while_idle: default_http2_keep_alive_while_idle(),
+        }
+    }
+}
+
+fn default_user_agent() -> String {
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.2365.66".to_string()
+}
+
+fn default_connect_timeout() -> u64 {
+    10
+}
+
+fn default_request_timeout() -> u64 {
+    300
+}
+
+fn default_pool_max_idle() -> usize {
+    10
+}
+
+fn default_pool_idle_timeout() -> u64 {
+    90
+}
+
+fn default_http2_keep_alive_interval() -> u64 {
+    30
+}
+
+fn default_http2_keep_alive_timeout() -> u64 {
+    20
+}
+
+fn default_http2_keep_alive_while_idle() -> bool {
+    true
+}
+
+impl HttpClientConfig {
+    /// Build a reqwest client from this configuration
+    pub fn build_client(&self) -> reqwest::Client {
+        reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(self.connect_timeout_secs))
+            .timeout(Duration::from_secs(self.request_timeout_secs))
+            .pool_max_idle_per_host(self.pool_max_idle_per_host)
+            .pool_idle_timeout(Duration::from_secs(self.pool_idle_timeout_secs))
+            .http2_keep_alive_interval(Duration::from_secs(self.http2_keep_alive_interval_secs))
+            .http2_keep_alive_timeout(Duration::from_secs(self.http2_keep_alive_timeout_secs))
+            .http2_keep_alive_while_idle(self.http2_keep_alive_while_idle)
+            .user_agent(&self.user_agent)
+            .build()
+            .expect("Failed to build HTTP client")
+    }
 }
 
 impl Default for ModelRouteConfig {

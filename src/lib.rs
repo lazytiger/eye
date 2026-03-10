@@ -112,8 +112,10 @@ pub async fn run() -> anyhow::Result<()> {
     let config = settings::Settings::load(cli_args.config_path.as_deref())
         .context("Failed to load configuration")?;
 
-    // Update API Key in active route (if provided via command line)
-    let mut config = config;
+    // Initialize global settings
+    settings::set_settings(config.clone())
+        .context("Failed to initialize global settings")?;
+
     // Handle subcommands
     if let Some(command) = cli_args.command {
         match command {
