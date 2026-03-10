@@ -44,10 +44,18 @@ pub struct Settings {
 
     /// Interface configuration
     pub interface: InterfaceConfig,
-    
+
     /// Agent configuration
     #[serde(default)]
     pub agent: AgentConfig,
+
+    /// Model routes - array of available model configurations
+    #[serde(default)]
+    pub model_routes: Vec<ModelRouteConfig>,
+
+    /// Default/active route (references name in model_routes)
+    #[serde(default = "default_active_route")]
+    pub active_route: String,
 }
 
 /// OpenRouter configuration
@@ -145,6 +153,45 @@ fn default_system_prompt() -> String {
     "You are Eye, a helpful personal intelligent assistant.".to_string()
 }
 
+/// Model route configuration
+///
+/// Represents a single model configuration that can be selected at runtime.
+/// Each route defines a complete provider configuration with:
+/// - Provider name (openai, openrouter, deepseek, or custom "name:endpoint")
+/// - Model identifier
+/// - Optional API key (can also use env var PROVIDER_API_KEY)
+/// - Optional endpoint override for custom providers
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelRouteConfig {
+    /// Unique identifier for this route (e.g., "fast", "smart", "budget")
+    pub name: String,
+
+    /// Provider name: "openai", "openrouter", "deepseek", or custom "name:endpoint"
+    pub provider: String,
+
+    /// Model identifier (e.g., "gpt-4o", "claude-3-opus")
+    pub model: String,
+
+    /// Optional API key (can also use env var PROVIDER_API_KEY)
+    #[serde(default)]
+    pub api_key: String,
+
+    /// Optional endpoint override (for custom providers)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<String>,
+
+    /// Optional max context length override
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_context_length: Option<usize>,
+}
+
+impl ModelRouteConfig {
+    /// Create a provider instance from this route configuration
+    pub fn create_provider(&self) -> anyhow::Result<Box<dyn crate::provider::Provider>> {
+        crate::provider::create_provider(&self.provider, &self.model, &self.api_key)
+    }
+}
+
 impl Settings {
     /// Load configuration
     ///
@@ -187,6 +234,19 @@ impl Settings {
 
         std::fs::write(config_path, config_content)
             .with_context(|| format!("Unable to write config file: {}", config_path.display()))
+    }
+
+    /// Get the active route configuration
+    pub fn get_active_route(&self) -> Result<&ModelRouteConfig> {
+        self.model_routes
+            .iter()
+            .find(|r| r.name == self.active_route)
+            .ok_or_else(|| anyhow::anyhow!("Active route '{}' not found", self.active_route))
+    }
+
+    /// List all available route names
+    pub fn list_route_names(&self) -> Vec<&str> {
+        self.model_routes.iter().map(|r| r.name.as_str()).collect()
     }
 }
 
@@ -278,4 +338,142 @@ fn default_show_timestamp() -> bool {
 
 fn default_enable_colors() -> bool {
     true
+}
+
+fn default_active_route() -> String {
+    String::new()
+}
+
+impl Default for ModelRouteConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            api_key: String::new(),
+            endpoint: None,
+            max_context_length: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_model_route_config_serialization() {
+        let route = ModelRouteConfig {
+            name: "test".to_string(),
+            provider: "openrouter".to_string(),
+            model: "gpt-4o".to_string(),
+            api_key: "test-key".to_string(),
+            endpoint: None,
+            max_context_length: None,
+        };
+
+        let serialized = toml::to_string(&route).unwrap();
+        let deserialized: ModelRouteConfig = toml::from_str(&serialized).unwrap();
+
+        assert_eq!(route.name, deserialized.name);
+        assert_eq!(route.provider, deserialized.provider);
+        assert_eq!(route.model, deserialized.model);
+        assert_eq!(route.api_key, deserialized.api_key);
+    }
+
+    #[test]
+    fn test_settings_with_model_routes() {
+        let toml_str = r#"
+            active_route = "fast"
+
+            [openrouter]
+            api_key = "test-key"
+            default_model = "gpt-4o"
+
+            [model]
+            temperature = 0.7
+            max_tokens = 2048
+            stream = true
+
+            [tools]
+            enabled = ["shell"]
+
+            [tools.shell]
+            allowed_commands = ["ls"]
+            allow_any_command = false
+            timeout_seconds = 30
+
+            [interface]
+            prompt = "eye> "
+            show_timestamp = false
+            enable_colors = true
+
+            [agent]
+            system_prompt = "Test prompt"
+
+            [[model_routes]]
+            name = "fast"
+            provider = "openrouter"
+            model = "gpt-4o-mini"
+
+            [[model_routes]]
+            name = "smart"
+            provider = "openrouter"
+            model = "claude-3-opus"
+        "#;
+
+        let settings: Settings = toml::from_str(toml_str).unwrap();
+
+        assert_eq!(settings.model_routes.len(), 2);
+        assert_eq!(settings.model_routes[0].name, "fast");
+        assert_eq!(settings.model_routes[0].provider, "openrouter");
+        assert_eq!(settings.model_routes[0].model, "gpt-4o-mini");
+        assert_eq!(settings.active_route, "fast");
+
+        let active = settings.get_active_route().unwrap();
+        assert_eq!(active.name, "fast");
+        assert_eq!(active.model, "gpt-4o-mini");
+    }
+
+    #[test]
+    fn test_settings_without_model_routes() {
+        let toml_str = r#"
+            [openrouter]
+            api_key = "test-key"
+            default_model = "gpt-4o"
+
+            [model]
+            temperature = 0.7
+            max_tokens = 2048
+            stream = true
+
+            [tools]
+            enabled = ["shell"]
+
+            [tools.shell]
+            allowed_commands = ["ls"]
+            allow_any_command = false
+            timeout_seconds = 30
+
+            [interface]
+            prompt = "eye> "
+            show_timestamp = false
+            enable_colors = true
+
+            [agent]
+            system_prompt = "Test prompt"
+        "#;
+
+        let settings: Settings = toml::from_str(toml_str).unwrap();
+
+        assert!(settings.model_routes.is_empty());
+        assert!(settings.active_route.is_empty());
+    }
+
+    #[test]
+    fn test_get_active_route_not_found() {
+        let settings = Settings::default();
+        let result = settings.get_active_route();
+        assert!(result.is_err());
+    }
 }

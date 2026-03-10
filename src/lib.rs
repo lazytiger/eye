@@ -135,6 +135,19 @@ pub async fn run() -> anyhow::Result<()> {
                 // TODO: List skills when implemented
                 return Ok(());
             }
+            cli::Commands::ListRoutes => {
+                println!("Available model routes:");
+                for route in &config.model_routes {
+                    println!("  - {} ({}/{})", route.name, route.provider, route.model);
+                }
+                if config.model_routes.is_empty() {
+                    println!("  (no model routes configured)");
+                }
+                if !config.active_route.is_empty() {
+                    println!("\nActive route: {}", config.active_route);
+                }
+                return Ok(());
+            }
             cli::Commands::Query { query } => {
                 // Single query mode - not implemented yet
                 tracing::info!("Query mode: {}", query);
@@ -147,12 +160,30 @@ pub async fn run() -> anyhow::Result<()> {
     }
 
     // Create provider
+    // Use active model route if configured, otherwise fall back to openrouter default
     let provider: std::sync::Arc<dyn crate::provider::Provider> = std::sync::Arc::from(
-        crate::provider::create_provider(
-            "bytedance:https://ark.cn-beijing.volces.com/api/coding/v3",
-            "ark-code-latest",
-            &config.openrouter.api_key,
-        )
+        if !config.model_routes.is_empty() && !config.active_route.is_empty() {
+            // Use model route configuration
+            match config.get_active_route() {
+                Ok(route) => {
+                    tracing::info!("Using model route: {} ({}/{})", route.name, route.provider, route.model);
+                    route.create_provider()
+                }
+                Err(e) => {
+                    tracing::warn!("Active route '{}' not found, falling back to openrouter: {}", config.active_route, e);
+                    crate::provider::create_provider("openrouter", &config.openrouter.default_model, &config.openrouter.api_key)
+                }
+            }
+        } else if !config.model_routes.is_empty() {
+            // Use first route as default
+            let route = &config.model_routes[0];
+            tracing::info!("Using first model route: {} ({}/{})", route.name, route.provider, route.model);
+            route.create_provider()
+        } else {
+            // Fall back to openrouter default (backwards compatibility)
+            tracing::info!("Using openrouter default model: {}", config.openrouter.default_model);
+            crate::provider::create_provider("openrouter", &config.openrouter.default_model, &config.openrouter.api_key)
+        }
         .context("Failed to create provider")?,
     );
 

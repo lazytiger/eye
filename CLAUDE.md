@@ -12,6 +12,8 @@ cargo build --release
 # Run
 cargo run -- chat              # Interactive chat mode
 cargo run -- query "text"      # Single query mode
+cargo run -- list-routes       # List model routes
+cargo run -- list-tools        # List available tools
 
 # Test
 cargo test                     # Run all tests
@@ -80,12 +82,55 @@ Tools are registered and passed to providers for function calling.
 
 ### Configuration
 
-Uses `eye.toml` with clap overrides. Key sections:
+Uses `~/.eye/config.toml` with clap overrides. Key sections:
 
 - `[openrouter]` - API key, endpoint, default model
 - `[model]` - temperature, max_tokens, stream
 - `[tools]` - enabled tools list
 - `[tools.shell]` - allowed commands whitelist
+- `[[model_routes]]` - array of model route configurations (optional)
+- `active_route` - name of the active model route (optional)
+
+**Model Routes** (multi-model support):
+
+The `model_routes` section allows configuring multiple models with different providers:
+
+```toml
+# Single model route example
+[[model_routes]]
+name = "fast"
+provider = "openrouter"
+model = "openai/gpt-4o-mini"
+
+# Multiple providers
+[[model_routes]]
+name = "smart"
+provider = "openrouter"
+model = "anthropic/claude-3-opus"
+
+[[model_routes]]
+name = "deepseek"
+provider = "deepseek"
+model = "deepseek-chat"
+
+# Custom endpoint (ByteDance Ark)
+[[model_routes]]
+name = "bytedance"
+provider = "bytedance:https://ark.cn-beijing.volces.com/api/coding/v3"
+model = "ark-code-latest"
+
+# Select active route
+active_route = "fast"
+```
+
+**API Key Priority:**
+1. Environment variable: `PROVIDER_API_KEY` (e.g., `OPENROUTER_API_KEY`, `DEEPSEEK_API_KEY`)
+2. Config file `api_key` field
+
+**Backwards Compatibility:** If `model_routes` is not configured, falls back to `[openrouter]` default settings.
+
+**CLI Commands:**
+- `cargo run -- list-routes` - List all configured model routes
 
 ## Development Guidelines
 

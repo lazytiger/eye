@@ -46,6 +46,8 @@ pub enum Commands {
     ListTools,
     /// List available skills
     ListSkills,
+    /// List available model routes
+    ListRoutes,
 }
 
 /// Parse command-line arguments
