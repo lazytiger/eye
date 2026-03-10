@@ -15,14 +15,6 @@ pub struct Cli {
     #[arg(short, long, value_name = "FILE")]
     pub config_path: Option<PathBuf>,
 
-    /// OpenRouter API Key
-    #[arg(short, long, env = "OPENROUTER_API_KEY")]
-    pub api_key: Option<String>,
-
-    /// Model name
-    #[arg(short, long, default_value = "deepseek/deepseek-v3.2")]
-    pub model: String,
-
     /// Interaction mode
     #[command(subcommand)]
     pub command: Option<Commands>,

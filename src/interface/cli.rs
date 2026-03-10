@@ -7,17 +7,14 @@ use crate::config::settings::InterfaceConfig;
 use anyhow::Result;
 use console::{style, Term};
 use std::io::Write;
-use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
-use tokio::sync::Mutex;
 
 /// CLI interface
 pub struct CliInterface {
     /// Configuration
     config: InterfaceConfig,
+    term: Term,
     arrow: String,
-    /// Console terminal for output (protected by mutex for thread-safe writes)
-    term: Arc<Mutex<Term>>,
 }
 
 impl CliInterface {
@@ -25,8 +22,8 @@ impl CliInterface {
     pub fn new(config: InterfaceConfig) -> Self {
         Self {
             config,
+            term: Term::stdout(),
             arrow: format!("{}", style("> ").cyan().bold()),
-            term: Arc::new(Mutex::new(Term::buffered_stdout())),
         }
     }
 }
@@ -38,9 +35,8 @@ impl Interface for CliInterface {
     }
 
     async fn send(&self, message: String) -> Result<()> {
-        // Use console style prefix similar to Claude Code
-        // ">" character with cyan color for assistant messages
-        let mut term = self.term.lock().await;
+        let mut term = self.term.clone();
+        let message = termimad::term_text(&message);
         term.write(format!("{0}{1}\n{0}", self.arrow, message).as_bytes())?;
         term.flush()?;
         Ok(())
@@ -50,10 +46,8 @@ impl Interface for CliInterface {
         // Use tokio::task::spawn_blocking for synchronous read_line
         loop {
             // Read line in a blocking task to avoid blocking the async runtime
-            let input = tokio::task::spawn_blocking(|| {
-                let term = Term::buffered_stdout();
-                term.read_line()
-            }).await??;
+            let term_clone = self.term.clone();
+            let input = tokio::task::spawn_blocking(move || term_clone.read_line()).await??;
 
             match input.trim() {
                 "" => continue,

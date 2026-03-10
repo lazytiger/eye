@@ -102,7 +102,7 @@ pub fn init_tracing(log_path: Option<std::path::PathBuf>) -> anyhow::Result<Opti
 /// This is the main entry point for the application logic
 pub async fn run() -> anyhow::Result<()> {
     // Initialize logging
-    let _guard = init_tracing(None)?;
+    let _guard = init_tracing(Some("logs".into()))?;
     tracing::info!("Starting Eye Personal Intelligent Assistant");
 
     // Parse command line arguments
@@ -114,16 +114,6 @@ pub async fn run() -> anyhow::Result<()> {
 
     // Update API Key in active route (if provided via command line)
     let mut config = config;
-    if let Some(api_key) = cli_args.api_key {
-        // Apply API key to the active route if routes are configured
-        if let Some(route) = config.model_routes
-            .iter_mut()
-            .find(|r| r.name == config.active_route)
-        {
-            route.api_key = api_key;
-        }
-    }
-
     // Handle subcommands
     if let Some(command) = cli_args.command {
         match command {
@@ -194,6 +184,7 @@ pub async fn run() -> anyhow::Result<()> {
         config.agent.system_prompt.clone(),
     );
 
+    tracing::info!("Start running agent now");
     agent.run().await?;
 
     tracing::info!("Eye Personal Intelligent Assistant has exited");
