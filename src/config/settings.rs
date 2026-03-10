@@ -4,7 +4,31 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// Get the default configuration file path
+///
+/// Returns the path to `.eye/config.toml` in the user's home directory.
+/// Supports Windows, Linux, and macOS.
+pub fn get_default_config_path() -> Result<PathBuf> {
+    let home_dir = home::home_dir()
+        .ok_or_else(|| anyhow::anyhow!("Unable to determine home directory"))?;
+
+    let config_dir = home_dir.join(".eye");
+    let config_file = config_dir.join("config.toml");
+
+    Ok(config_file)
+}
+
+/// Get the default configuration directory
+///
+/// Returns the path to `.eye` directory in the user's home directory.
+pub fn get_default_config_dir() -> Result<PathBuf> {
+    let home_dir = home::home_dir()
+        .ok_or_else(|| anyhow::anyhow!("Unable to determine home directory"))?;
+
+    Ok(home_dir.join(".eye"))
+}
 
 /// Application settings
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -124,20 +148,35 @@ fn default_system_prompt() -> String {
 impl Settings {
     /// Load configuration
     ///
-    /// Load from the specified path, or from the default location if none provided
+    /// Load from the specified path, or from the default location (~/.eye/config.toml) if none provided.
+    /// If the config file doesn't exist, it will be created with default values.
     pub fn load(config_path: Option<&Path>) -> Result<Self> {
-        let config_path = config_path.unwrap_or_else(|| Path::new("eye.toml"));
+        let config_path = config_path
+            .map(|p| p.to_path_buf())
+            .or_else(|| get_default_config_path().ok())
+            .context("Unable to determine configuration file path")?;
+
+        // Check if parent directory exists, create if not
+        if let Some(parent) = config_path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("Failed to create config directory: {}", parent.display()))?;
+            }
+        }
 
         if config_path.exists() {
-            let config_content = std::fs::read_to_string(config_path).with_context(|| {
+            let config_content = std::fs::read_to_string(&config_path).with_context(|| {
                 format!("Unable to read config file: {}", config_path.display())
             })?;
 
             toml::from_str(&config_content)
                 .with_context(|| format!("Invalid configuration format: {}", config_path.display()))
         } else {
-            // If no config file exists, return defaults
-            Ok(Self::default())
+            // Create default configuration and save it
+            let settings = Self::default();
+            settings.save(&config_path)?;
+            tracing::info!("Created default configuration at: {}", config_path.display());
+            Ok(settings)
         }
     }
 
