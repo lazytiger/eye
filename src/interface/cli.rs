@@ -9,15 +9,15 @@ use console::{style, Term};
 use std::io::Write;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 
 /// CLI interface
 pub struct CliInterface {
     /// Configuration
     config: InterfaceConfig,
     arrow: String,
-    /// Console terminal
-    term: Arc<RwLock<Term>>,
+    /// Console terminal for output (protected by mutex for thread-safe writes)
+    term: Arc<Mutex<Term>>,
 }
 
 impl CliInterface {
@@ -26,7 +26,7 @@ impl CliInterface {
         Self {
             config,
             arrow: format!("{}", style("> ").cyan().bold()),
-            term: Arc::new(RwLock::new(Term::buffered_stdout())),
+            term: Arc::new(Mutex::new(Term::buffered_stdout())),
         }
     }
 }
@@ -40,21 +40,21 @@ impl Interface for CliInterface {
     async fn send(&self, message: String) -> Result<()> {
         // Use console style prefix similar to Claude Code
         // ">" character with cyan color for assistant messages
-        let term = self.term.read().await;
-        term.write_line(&format!("{0}{1}", self.arrow, message))?;
+        let mut term = self.term.lock().await;
+        term.write(format!("{0}{1}\n{0}", self.arrow, message).as_bytes())?;
         term.flush()?;
         Ok(())
     }
 
     async fn listen(&self, response_tx: Sender<String>) -> Result<()> {
+        // Use tokio::task::spawn_blocking for synchronous read_line
         loop {
-            {
-                let mut term = self.term.write().await;
-                term.write(self.arrow.as_bytes())?;
-                term.flush()?;
-            }
-            let term = self.term.read().await;
-            let input = term.read_line()?;
+            // Read line in a blocking task to avoid blocking the async runtime
+            let input = tokio::task::spawn_blocking(|| {
+                let term = Term::buffered_stdout();
+                term.read_line()
+            }).await??;
+
             match input.trim() {
                 "" => continue,
                 "/exit" => break,
