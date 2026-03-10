@@ -246,6 +246,11 @@ impl HistoryManager {
         }));
     }
 
+    pub async fn add_message(&self, message: ChatMessage) {
+        let mut inner = self.0.write().await;
+        inner.messages.push(message);
+    }
+
     pub async fn messages(&self) -> Vec<ChatMessage> {
         let inner = self.0.read().await;
         inner.messages.clone()

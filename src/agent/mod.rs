@@ -8,8 +8,12 @@
 //! - Interface (user I/O)
 
 use crate::interface::Interface;
+use crate::memory::conversation::ConversationManager;
 use crate::memory::history::HistoryManager;
-use crate::provider::{ChatRequest, MessageContent, Provider, Tool, ToolCall as ProviderToolCall};
+use crate::provider::{
+    ChatMessage, ChatRequest, MessageContent, Provider, Tool, ToolCall as ProviderToolCall,
+    UserMessage,
+};
 use crate::skill::SkillManager;
 use crate::tool::{ExecuteResult, ToolManager};
 use anyhow::Result;
@@ -83,43 +87,44 @@ impl Agent {
     async fn process_user_message(&self, user_input: &str) -> Result<()> {
         tracing::info!("Processing user message: {}", user_input);
 
-        // 1. Add user message to history
-        self.history.add_user_message(user_input).await;
+        // Create per-request conversation manager
+        let conversation = ConversationManager::new(user_input);
 
-        // 2. Build request with current history
-        let mut request = self.build_request().await?;
+        // 1. Build initial request with long-term history + current user input
+        let mut request = self.build_request_with_conversation(&conversation).await?;
 
-        tracing::debug!("Initial request built with {} messages", request.messages.len());
+        tracing::debug!(
+            "Initial request built with {} messages",
+            request.messages.len()
+        );
 
-        // 3. Main conversation loop (handles tool calls)
+        // 2. Main conversation loop (handles tool calls)
         let mut loop_count = 0;
         loop {
             loop_count += 1;
             tracing::info!("Conversation loop iteration {}", loop_count);
 
-            // 4. Send request to LLM
+            // 3. Send request to LLM
             tracing::debug!("Sending request to LLM...");
             let chat_start = std::time::Instant::now();
             let response = self.provider.chat(request).await?;
             tracing::info!("LLM response received in {:?}", chat_start.elapsed());
 
-            // 5. Get assistant message
+            // 4. Get assistant message
             let assistant_message = &response.choices.first().unwrap().message;
-
-            // 6. Record response to history
-            self.history.on_response(&response).await;
 
             match &assistant_message.tool_calls {
                 Some(tool_calls) if !tool_calls.is_empty() => {
                     tracing::info!("Received {} tool call(s)", tool_calls.len());
 
-                    // Execute all tool calls
+                    // Execute all tool calls (tracked in conversation manager)
                     let exec_start = std::time::Instant::now();
-                    self.execute_tool_calls(tool_calls).await?;
+                    self.execute_tool_calls_with_conversation(tool_calls, &conversation)
+                        .await?;
                     tracing::info!("Tool execution completed in {:?}", exec_start.elapsed());
 
-                    // Build new request with updated history (including tool results)
-                    request = self.build_request().await?;
+                    // Build new request with updated tool results from conversation
+                    request = self.build_request_with_conversation(&conversation).await?;
                     tracing::debug!("New request built with {} messages", request.messages.len());
 
                     // Continue loop to send back to LLM
@@ -135,6 +140,16 @@ impl Agent {
                         };
                         self.interface.send(content_str).await?;
                     }
+
+                    // Request completed: only add user input and final answer to long-term history
+                    self.history.add_user_message(user_input).await;
+                    self.history
+                        .add_message(ChatMessage::Assistant(assistant_message.clone()))
+                        .await;
+
+                    tracing::info!(
+                        "Request completed: added to history (user input + final answer)"
+                    );
                     break; // Exit the loop
                 }
             }
@@ -144,9 +159,55 @@ impl Agent {
         Ok(())
     }
 
-    /// Build a chat request from current history
-    async fn build_request(&self) -> Result<ChatRequest> {
-        let messages = self.history.messages().await;
+    /// Build a chat request from current history and conversation context
+    async fn build_request_with_conversation(
+        &self,
+        conversation: &ConversationManager,
+    ) -> Result<ChatRequest> {
+        let mut messages = self.history.messages().await;
+
+        // Add current user input from conversation
+        let user_input = conversation.user_input().await;
+        messages.push(ChatMessage::User(UserMessage {
+            name: None,
+            content: MessageContent::Text(user_input),
+        }));
+
+        // Add tool calls and results from current conversation
+        let tool_calls = conversation.tool_calls().await;
+        if !tool_calls.is_empty() {
+            tracing::debug!(
+                "Adding {} tool call(s) from conversation to request",
+                tool_calls.len()
+            );
+
+            // Group tool calls and results into the request messages
+            // The LLM expects: assistant message with tool_calls, then tool result messages
+            for tracked_call in tool_calls {
+                // Add assistant message with tool call
+                let provider_tool_call = ProviderToolCall {
+                    id: tracked_call.tool_call_id.clone(),
+                    type_: crate::provider::ToolType::Function,
+                    function: crate::provider::FunctionCall {
+                        name: tracked_call.tool_name.clone(),
+                        arguments: tracked_call.arguments.clone(),
+                    },
+                };
+
+                messages.push(ChatMessage::Assistant(crate::provider::AssistantMessage {
+                    content: None,
+                    name: None,
+                    tool_calls: Some(vec![provider_tool_call]),
+                    refusal: None,
+                }));
+
+                // Add tool result
+                messages.push(ChatMessage::Tool(crate::provider::ToolMessage {
+                    tool_call_id: tracked_call.tool_call_id.clone(),
+                    content: tracked_call.result_content(),
+                }));
+            }
+        }
 
         // Get tool definitions if tools are available
         let tools = if !self.tool_manager.list_tools().is_empty() {
@@ -176,8 +237,12 @@ impl Agent {
         })
     }
 
-    /// Execute a list of tool calls from the LLM response
-    async fn execute_tool_calls(&self, tool_calls: &[ProviderToolCall]) -> Result<()> {
+    /// Execute a list of tool calls and track them in the conversation manager
+    async fn execute_tool_calls_with_conversation(
+        &self,
+        tool_calls: &[ProviderToolCall],
+        conversation: &ConversationManager,
+    ) -> Result<()> {
         for tool_call in tool_calls {
             let tool_name = &tool_call.function.name;
             let args: serde_json::Value =
@@ -188,41 +253,52 @@ impl Agent {
             // Execute the tool first
             let result = self.tool_manager.execute_tool(tool_name, args).await?;
 
-            // Record tool call for loop detection (after execution)
-            self.history.record_tool_call(tool_name, &tool_call.function.arguments).await;
+            // Record tool call in conversation manager (for per-request tracking)
+            conversation
+                .record_tool_call(
+                    &tool_call.id,
+                    tool_name,
+                    &tool_call.function.arguments,
+                    result.clone(),
+                )
+                .await;
 
             // Check for loop (but don't abort, just log warning)
-            match self.history.check_loop(tool_name, &tool_call.function.arguments).await {
-                crate::memory::history::LoopDetectionResult::ApproachingLoop { tool_name: tn, count, .. } => {
+            match conversation
+                .check_loop(tool_name, &tool_call.function.arguments)
+                .await
+            {
+                crate::memory::conversation::LoopDetectionResult::ApproachingLoop {
+                    tool_name: tn,
+                    count,
+                    ..
+                } => {
                     tracing::warn!(
                         "Loop warning: Tool '{}' has been called {} times consecutively. LLM may be approaching a loop.",
-                        tn, count
+                        tn,
+                        count
                     );
                 }
-                crate::memory::history::LoopDetectionResult::LoopDetected { cycle_length, .. } => {
+                crate::memory::conversation::LoopDetectionResult::LoopDetected {
+                    cycle_length,
+                    ..
+                } => {
                     tracing::warn!(
-                        "Loop detected: Tool call pattern repeating with cycle length {}. Clearing history to allow recovery.",
+                        "Loop detected: Tool call pattern repeating with cycle length {}. Continuing with caution.",
                         cycle_length
                     );
-                    // Clear tool call history to allow recovery
-                    self.history.clear_tool_call_history().await;
                 }
-                crate::memory::history::LoopDetectionResult::NoLoop => {}
+                crate::memory::conversation::LoopDetectionResult::NoLoop => {}
             }
 
-            // Format result for history
-            let result_content = match result {
+            // Format result for logging
+            let result_content = match &result {
                 ExecuteResult::Success(content) => match content {
                     MessageContent::Text(text) => format!("Success: {}", text),
                     MessageContent::Parts(_) => "Success: [Multimodal result]".to_string(),
                 },
                 ExecuteResult::Failure(error) => format!("Error: {}", error),
             };
-
-            // Add tool result to history
-            self.history
-                .add_tool_result(&tool_call.id, MessageContent::Text(result_content.clone()))
-                .await;
 
             tracing::info!("Tool {} executed, result: {}", tool_name, result_content);
         }

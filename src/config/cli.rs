@@ -20,7 +20,7 @@ pub struct Cli {
     pub api_key: Option<String>,
 
     /// Model name
-    #[arg(short, long, default_value = "openai/gpt-4o-mini")]
+    #[arg(short, long, default_value = "deepseek/deepseek-v3.2")]
     pub model: String,
 
     /// Interaction mode

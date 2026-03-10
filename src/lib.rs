@@ -87,6 +87,7 @@ pub fn init_tracing(log_path: Option<std::path::PathBuf>) -> anyhow::Result<Opti
     );
     let subscriber = builder
         .with_ansi(false)
+        .with_target(false)
         .with_file(true)
         .with_line_number(true)
         .with_timer(tracing_subscriber::fmt::time::ChronoLocal::default())
@@ -147,8 +148,12 @@ pub async fn run() -> anyhow::Result<()> {
 
     // Create provider
     let provider: std::sync::Arc<dyn crate::provider::Provider> = std::sync::Arc::from(
-        crate::provider::create_provider("openrouter", &cli_args.model, &config.openrouter.api_key)
-            .context("Failed to create provider")?
+        crate::provider::create_provider(
+            "bytedance:https://ark.cn-beijing.volces.com/api/coding/v3",
+            "ark-code-latest",
+            &config.openrouter.api_key,
+        )
+        .context("Failed to create provider")?,
     );
 
     // Create history manager
