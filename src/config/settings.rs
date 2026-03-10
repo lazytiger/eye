@@ -16,8 +16,6 @@ struct LegacySettings {
     #[serde(default)]
     active_route: String,
     #[serde(default)]
-    model: ModelConfig,
-    #[serde(default)]
     tools: ToolsConfig,
     #[serde(default)]
     interface: InterfaceConfig,
@@ -37,7 +35,6 @@ impl From<LegacySettings> for Settings {
         let mut settings = Settings {
             model_routes: legacy.model_routes,
             active_route: legacy.active_route,
-            model: legacy.model,
             tools: legacy.tools,
             interface: legacy.interface,
             agent: legacy.agent,
@@ -104,10 +101,6 @@ pub struct Settings {
     /// Default/active route (references name in model_routes)
     #[serde(default)]
     pub active_route: String,
-
-    /// Model configuration (temperature, max_tokens, etc.)
-    #[serde(default)]
-    pub model: ModelConfig,
 
     /// Tools configuration
     #[serde(default)]
@@ -217,22 +210,6 @@ impl Settings {
     }
 }
 
-/// Model configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ModelConfig {
-    /// Temperature
-    #[serde(default = "default_temperature")]
-    pub temperature: f32,
-
-    /// Max tokens
-    #[serde(default = "default_max_tokens")]
-    pub max_tokens: u32,
-
-    /// Enable streaming output
-    #[serde(default = "default_stream")]
-    pub stream: bool,
-}
-
 /// Tools configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolsConfig {
@@ -333,16 +310,6 @@ impl ModelRouteConfig {
     }
 }
 
-impl Default for ModelConfig {
-    fn default() -> Self {
-        Self {
-            temperature: default_temperature(),
-            max_tokens: default_max_tokens(),
-            stream: default_stream(),
-        }
-    }
-}
-
 impl Default for ToolsConfig {
     fn default() -> Self {
         Self {
@@ -378,18 +345,6 @@ impl Default for InterfaceConfig {
 }
 
 // Default value helpers
-fn default_temperature() -> f32 {
-    0.7
-}
-
-fn default_max_tokens() -> u32 {
-    2048
-}
-
-fn default_stream() -> bool {
-    true
-}
-
 fn default_allow_any_command() -> bool {
     false
 }
