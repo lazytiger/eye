@@ -6,10 +6,11 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 /// Maximum number of recent tool calls to track for loop detection
-const MAX_TOOL_CALL_HISTORY: usize = 20;
+const MAX_TOOL_CALL_HISTORY: usize = 30;
 
 /// Minimum consecutive similar patterns to detect a loop
-const MIN_LOOP_PATTERN_COUNT: usize = 3;
+/// Set higher to avoid false positives during legitimate repeated operations
+const MIN_LOOP_PATTERN_COUNT: usize = 6;
 
 /// Tool call signature for loop detection
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,6 +46,12 @@ impl ToolCallSignature {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoopDetectionResult {
     NoLoop,
+    /// Approaching loop threshold (more than half of MIN_LOOP_PATTERN_COUNT)
+    ApproachingLoop {
+        tool_name: String,
+        arguments: String,
+        count: usize,
+    },
     LoopDetected {
         pattern: Vec<ToolCallSignature>,
         cycle_length: usize,
@@ -149,12 +156,31 @@ impl HistoryManager {
     }
 
     /// Check if a specific tool call pattern is repeating
-    pub async fn check_loop(&self, tool_name: &str, arguments: &str) -> bool {
+    /// Returns the count of consecutive occurrences for more granular handling
+    pub async fn check_loop(&self, tool_name: &str, arguments: &str) -> LoopDetectionResult {
         let signature = ToolCallSignature::normalized(tool_name, arguments);
         let inner = self.0.read().await;
 
         if inner.recent_tool_calls.len() < MIN_LOOP_PATTERN_COUNT {
-            return false;
+            // Count occurrences even if below threshold
+            let mut count = 0;
+            for sig in inner.recent_tool_calls.iter().rev() {
+                if *sig == signature {
+                    count += 1;
+                } else {
+                    break;
+                }
+            }
+
+            // Return ApproachingLoop if more than half of threshold
+            if count > 0 && count >= MIN_LOOP_PATTERN_COUNT / 2 {
+                return LoopDetectionResult::ApproachingLoop {
+                    tool_name: tool_name.to_string(),
+                    arguments: arguments.to_string(),
+                    count,
+                };
+            }
+            return LoopDetectionResult::NoLoop;
         }
 
         // Count consecutive occurrences of the same signature at the end
@@ -163,14 +189,26 @@ impl HistoryManager {
             if *sig == signature {
                 count += 1;
                 if count >= MIN_LOOP_PATTERN_COUNT {
-                    return true;
+                    return LoopDetectionResult::LoopDetected {
+                        pattern: vec![signature.clone()],
+                        cycle_length: 1,
+                    };
                 }
             } else {
                 break;
             }
         }
 
-        false
+        // Return count if approaching threshold
+        if count >= MIN_LOOP_PATTERN_COUNT / 2 {
+            return LoopDetectionResult::ApproachingLoop {
+                tool_name: tool_name.to_string(),
+                arguments: arguments.to_string(),
+                count,
+            };
+        }
+
+        LoopDetectionResult::NoLoop
     }
 
     /// Clear the tool call history (useful after successful conversation progress)
@@ -282,8 +320,8 @@ mod tests {
         let provider = create_provider("deepseek", "deepseek-chat", "").unwrap();
         let history = HistoryManager::new(provider.into());
 
-        // Record a repeating pattern 3 times
-        for _ in 0..3 {
+        // Record a repeating pattern 6 times (MIN_LOOP_PATTERN_COUNT)
+        for _ in 0..6 {
             history.record_tool_call("search_files", r#"{"path": ".", "pattern": "*.rs"}"#).await;
             history.record_tool_call("read_file", r#"{"path": "src/main.rs"}"#).await;
         }
@@ -315,14 +353,33 @@ mod tests {
         let provider = create_provider("deepseek", "deepseek-chat", "").unwrap();
         let history = HistoryManager::new(provider.into());
 
-        // Record same tool call 3 times
+        // Record same tool call 6 times (MIN_LOOP_PATTERN_COUNT)
+        for _ in 0..6 {
+            history.record_tool_call("search_files", r#"{"path": "."}"#).await;
+        }
+
+        // Check if this pattern would continue - should return LoopDetected
+        let result = history.check_loop("search_files", r#"{"path": "."}"#).await;
+        assert!(matches!(result, LoopDetectionResult::LoopDetected { .. }));
+
+        // Different tool should return NoLoop
+        let result2 = history.check_loop("read_file", r#"{"path": "test.rs"}"#).await;
+        assert!(matches!(result2, LoopDetectionResult::NoLoop));
+    }
+
+    #[tokio::test]
+    async fn test_check_loop_approaching_threshold() {
+        let provider = create_provider("deepseek", "deepseek-chat", "").unwrap();
+        let history = HistoryManager::new(provider.into());
+
+        // Record 3 times (half of MIN_LOOP_PATTERN_COUNT = 6)
         for _ in 0..3 {
             history.record_tool_call("search_files", r#"{"path": "."}"#).await;
         }
 
-        // Check if this pattern would continue
-        assert!(history.check_loop("search_files", r#"{"path": "."}"#).await);
-        assert!(!history.check_loop("read_file", r#"{"path": "test.rs"}"#).await);
+        // Should return ApproachingLoop
+        let result = history.check_loop("search_files", r#"{"path": "."}"#).await;
+        assert!(matches!(result, LoopDetectionResult::ApproachingLoop { count, .. } if count == 3));
     }
 
     #[tokio::test]
@@ -330,19 +387,21 @@ mod tests {
         let provider = create_provider("deepseek", "deepseek-chat", "").unwrap();
         let history = HistoryManager::new(provider.into());
 
-        // Record some tool calls
-        for _ in 0..5 {
+        // Record some tool calls (6 times to reach threshold)
+        for _ in 0..6 {
             history.record_tool_call("test_tool", r#"{"arg": 1}"#).await;
         }
 
         // Verify loop detected
-        assert!(history.check_loop("test_tool", r#"{"arg": 1}"#).await);
+        let result = history.check_loop("test_tool", r#"{"arg": 1}"#).await;
+        assert!(matches!(result, LoopDetectionResult::LoopDetected { .. }));
 
         // Clear history
         history.clear_tool_call_history().await;
 
         // Verify no loop detected
-        assert!(!history.check_loop("test_tool", r#"{"arg": 1}"#).await);
+        let result2 = history.check_loop("test_tool", r#"{"arg": 1}"#).await;
+        assert!(matches!(result2, LoopDetectionResult::NoLoop));
     }
 
     #[tokio::test]

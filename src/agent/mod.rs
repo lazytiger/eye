@@ -167,25 +167,30 @@ impl Agent {
 
             tracing::info!("Executing tool: {} with args: {:?}", tool_name, args);
 
-            // Record tool call for loop detection
+            // Execute the tool first
+            let result = self.tool_manager.execute_tool(tool_name, args).await?;
+
+            // Record tool call for loop detection (after execution)
             self.history.record_tool_call(tool_name, &tool_call.function.arguments).await;
 
-            // Check for loop before executing
-            if self.history.check_loop(tool_name, &tool_call.function.arguments).await {
-                let error_msg = format!(
-                    "Loop detected: Tool '{}' with arguments '{}' has been called repeatedly. Aborting to prevent infinite loop.",
-                    tool_name, tool_call.function.arguments
-                );
-                tracing::warn!("{}", error_msg);
-
-                // Clear tool call history to allow recovery
-                self.history.clear_tool_call_history().await;
-
-                return Err(anyhow::anyhow!(error_msg));
+            // Check for loop (but don't abort, just log warning)
+            match self.history.check_loop(tool_name, &tool_call.function.arguments).await {
+                crate::memory::history::LoopDetectionResult::ApproachingLoop { tool_name: tn, count, .. } => {
+                    tracing::warn!(
+                        "Loop warning: Tool '{}' has been called {} times consecutively. LLM may be approaching a loop.",
+                        tn, count
+                    );
+                }
+                crate::memory::history::LoopDetectionResult::LoopDetected { cycle_length, .. } => {
+                    tracing::warn!(
+                        "Loop detected: Tool call pattern repeating with cycle length {}. Clearing history to allow recovery.",
+                        cycle_length
+                    );
+                    // Clear tool call history to allow recovery
+                    self.history.clear_tool_call_history().await;
+                }
+                crate::memory::history::LoopDetectionResult::NoLoop => {}
             }
-
-            // Execute the tool
-            let result = self.tool_manager.execute_tool(tool_name, args).await?;
 
             // Format result for history
             let result_content = match result {
