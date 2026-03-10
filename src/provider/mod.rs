@@ -46,6 +46,7 @@ pub trait Provider: Send + Sync {
 ///   - Custom endpoint: "name:https://endpoint.com/path"
 /// * `model_name` - The model name to use
 /// * `api_key` - The API key (can be overridden by environment variable)
+/// * `max_context_length` - Maximum context length in tokens (optional, provider may use its own default)
 ///
 /// # Returns
 /// A boxed Provider trait object
@@ -60,10 +61,11 @@ pub fn create_provider(
     provider_name: &str,
     model_name: &str,
     api_key: &str,
+    max_context_length: Option<usize>,
 ) -> Result<Box<dyn Provider>> {
     // Check if provider_name contains ":" indicating custom endpoint format
     if provider_name.contains(':') {
-        return create_compatible_provider(provider_name, model_name, api_key);
+        return create_compatible_provider(provider_name, model_name, api_key, max_context_length);
     }
 
     // Get API key with environment variable priority
@@ -73,14 +75,17 @@ pub fn create_provider(
         "openai" => Ok(Box::new(openai::OpenaiProvider::new(
             api_key,
             model_name.to_string(),
+            max_context_length,
         ))),
         "openrouter" => Ok(Box::new(openrouter::OpenrouterProvider::new(
             api_key,
             model_name.to_string(),
+            max_context_length,
         ))),
         "deepseek" => Ok(Box::new(deepseek::DeepseekProvider::new(
             api_key,
             model_name.to_string(),
+            max_context_length,
         ))),
         _ => Err(anyhow!(
             "Unknown provider: {}. Supported providers: openai, openrouter, deepseek, or custom format 'name:endpoint'",
@@ -95,6 +100,7 @@ fn create_compatible_provider(
     provider_spec: &str,
     model_name: &str,
     api_key: &str,
+    max_context_length: Option<usize>,
 ) -> Result<Box<dyn Provider>> {
     let parts: Vec<&str> = provider_spec.splitn(2, ':').collect();
     if parts.len() != 2 {
@@ -118,16 +124,12 @@ fn create_compatible_provider(
     // Get API key with environment variable priority
     let api_key = get_api_key_with_env_priority(name, api_key);
 
-    // For compatible provider, we use a reasonable default for max_context_length
-    // This could be made configurable in the future
-    const DEFAULT_MAX_CONTEXT_LENGTH: usize = 4096;
-
     Ok(Box::new(compatible::OpenaiCompatibleProvider::new(
         name,
         model_name,
         endpoint,
         api_key,
-        DEFAULT_MAX_CONTEXT_LENGTH,
+        max_context_length.unwrap_or(4096),
     )))
 }
 

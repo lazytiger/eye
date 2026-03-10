@@ -261,7 +261,12 @@ pub struct ModelRouteConfig {
 impl ModelRouteConfig {
     /// Create a provider instance from this route configuration
     pub fn create_provider(&self) -> anyhow::Result<Box<dyn crate::provider::Provider>> {
-        crate::provider::create_provider(&self.provider, &self.model, &self.api_key)
+        crate::provider::create_provider(
+            &self.provider,
+            &self.model,
+            &self.api_key,
+            Some(self.max_context_length as usize),
+        )
     }
 }
 

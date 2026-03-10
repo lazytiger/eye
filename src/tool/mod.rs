@@ -121,7 +121,7 @@ impl ToolManager {
         // Register all built-in tools
         manager.register_tool(Arc::new(ShellTool::new()));
         manager.register_tool(Arc::new(TimeTool::new()));
-        manager.register_tool(Arc::new(SearchTool::new()));
+        manager.register_tool(Arc::new(SearchTool::default()));
         manager.register_tool(Arc::new(WebFetchTool::new()));
         manager.register_tool(Arc::new(FileReadTool::new()));
         manager.register_tool(Arc::new(FileWriteTool::new()));

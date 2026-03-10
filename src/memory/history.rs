@@ -364,7 +364,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_record_and_detect_loop() {
-        let provider = create_provider("deepseek", "deepseek-chat", "").unwrap();
+        let provider = create_provider("deepseek", "deepseek-chat", "", None).unwrap();
         let history = HistoryManager::new(provider.into());
 
         // Record a repeating pattern 6 times (MIN_LOOP_PATTERN_COUNT)
@@ -383,7 +383,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_no_loop_with_insufficient_patterns() {
-        let provider = create_provider("deepseek", "deepseek-chat", "").unwrap();
+        let provider = create_provider("deepseek", "deepseek-chat", "", None).unwrap();
         let history = HistoryManager::new(provider.into());
 
         // Record only 2 similar calls (less than MIN_LOOP_PATTERN_COUNT)
@@ -397,7 +397,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_loop_single_tool() {
-        let provider = create_provider("deepseek", "deepseek-chat", "").unwrap();
+        let provider = create_provider("deepseek", "deepseek-chat", "", None).unwrap();
         let history = HistoryManager::new(provider.into());
 
         // Record same tool call 6 times (MIN_LOOP_PATTERN_COUNT)
@@ -416,7 +416,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_loop_approaching_threshold() {
-        let provider = create_provider("deepseek", "deepseek-chat", "").unwrap();
+        let provider = create_provider("deepseek", "deepseek-chat", "", None).unwrap();
         let history = HistoryManager::new(provider.into());
 
         // Record 3 times (half of MIN_LOOP_PATTERN_COUNT = 6)
@@ -431,7 +431,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_clear_tool_call_history() {
-        let provider = create_provider("deepseek", "deepseek-chat", "").unwrap();
+        let provider = create_provider("deepseek", "deepseek-chat", "", None).unwrap();
         let history = HistoryManager::new(provider.into());
 
         // Record some tool calls (6 times to reach threshold)
@@ -453,7 +453,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_loop_detection_with_varying_args() {
-        let provider = create_provider("deepseek", "deepseek-chat", "").unwrap();
+        let provider = create_provider("deepseek", "deepseek-chat", "", None).unwrap();
         let history = HistoryManager::new(provider.into());
 
         // Record pattern with different arguments (should not be detected as loop)
@@ -468,7 +468,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_max_tool_call_history_limit() {
-        let provider = create_provider("deepseek", "deepseek-chat", "").unwrap();
+        let provider = create_provider("deepseek", "deepseek-chat", "", None).unwrap();
         let history = HistoryManager::new(provider.into());
 
         // Record more than MAX_TOOL_CALL_HISTORY
@@ -485,7 +485,7 @@ mod tests {
     async fn test_messages_with_limit() {
         use crate::provider::ChatMessage;
 
-        let provider = create_provider("deepseek", "deepseek-chat", "").unwrap();
+        let provider = create_provider("deepseek", "deepseek-chat", "", None).unwrap();
         let history = HistoryManager::new(provider.into());
 
         // Add 10 messages (5 conversation pairs)
@@ -540,8 +540,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_history() -> anyhow::Result<()> {
-        let history = HistoryManager::new(create_provider("deepseek", "deepseek-chat", "")?.into());
-        let provider = create_provider("deepseek", "deepseek-chat", "")?;
+        let history = HistoryManager::new(create_provider("deepseek", "deepseek-chat", "", None)?.into());
+        let provider = create_provider("deepseek", "deepseek-chat", "", None)?;
         println!("test begin");
         let mut request = ChatRequest::default();
         // 添加一段较长的用户 - 助手对话历史，用于测试历史压缩功能

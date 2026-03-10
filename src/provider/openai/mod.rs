@@ -14,15 +14,17 @@ pub struct OpenaiProvider {
     api_key: String,
     model: String,
     base_url: String,
+    max_context_length: Option<usize>,
 }
 
 impl OpenaiProvider {
     /// Create a new OpenAI provider
-    pub fn new(api_key: String, model: String) -> Self {
+    pub fn new(api_key: String, model: String, max_context_length: Option<usize>) -> Self {
         Self {
             api_key,
             model,
             base_url: "https://api.openai.com/v1".to_string(),
+            max_context_length,
         }
     }
 
@@ -32,6 +34,7 @@ impl OpenaiProvider {
             api_key,
             model,
             base_url,
+            max_context_length: None,
         }
     }
 }
@@ -47,6 +50,7 @@ impl crate::provider::Provider for OpenaiProvider {
         mut request: crate::provider::types::ChatRequest,
     ) -> anyhow::Result<crate::provider::types::ChatResponse> {
         request.model = Some(self.model.clone());
+        request.parallel_tool_calls = Some(true);
         let url = format!("{}/chat/completions", self.base_url);
         call_chat_completions::<CreateChatCompletionRequest, CreateChatCompletionResponse>(
             &url,
@@ -94,6 +98,11 @@ impl crate::provider::Provider for OpenaiProvider {
     }
 
     fn max_context_length(&self) -> usize {
+        // Use configured max_context_length if provided, otherwise use model-based detection
+        if let Some(length) = self.max_context_length {
+            return length;
+        }
+
         let model_lower = self.model.to_lowercase();
 
         if model_lower.contains("gpt-4") {

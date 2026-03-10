@@ -3,7 +3,6 @@
 //! This module provides the OpenRouter provider with API type definitions and conversions.
 
 mod chat_types;
-mod client;
 mod convert;
 mod embedding_types;
 
@@ -17,15 +16,17 @@ pub struct OpenrouterProvider {
     api_key: String,
     model: String,
     base_url: String,
+    max_context_length: Option<usize>,
 }
 
 impl OpenrouterProvider {
     /// Create a new OpenRouter provider
-    pub fn new(api_key: String, model: String) -> Self {
+    pub fn new(api_key: String, model: String, max_context_length: Option<usize>) -> Self {
         Self {
             api_key,
             model,
             base_url: "https://openrouter.ai/api/v1".to_string(),
+            max_context_length,
         }
     }
 
@@ -35,6 +36,7 @@ impl OpenrouterProvider {
             api_key,
             model,
             base_url,
+            max_context_length: None,
         }
     }
 }
@@ -50,13 +52,9 @@ impl crate::provider::Provider for OpenrouterProvider {
         mut request: crate::provider::types::ChatRequest,
     ) -> anyhow::Result<crate::provider::types::ChatResponse> {
         request.model = Some(self.model.clone());
+        request.parallel_tool_calls = Some(true);
         let url = format!("{}/chat/completions", self.base_url);
-        call_chat_completions::<ChatRequest, ChatResponse>(
-            &url,
-            &self.api_key,
-            request,
-        )
-        .await
+        call_chat_completions::<ChatRequest, ChatResponse>(&url, &self.api_key, request).await
     }
 
     async fn embedding(
@@ -64,12 +62,7 @@ impl crate::provider::Provider for OpenrouterProvider {
         request: crate::provider::types::EmbeddingRequest,
     ) -> anyhow::Result<crate::provider::types::EmbeddingResponse> {
         let url = format!("{}/embeddings", self.base_url);
-        call_embedding::<EmbeddingsRequest, EmbeddingsResponse>(
-            &url,
-            &self.api_key,
-            request,
-        )
-        .await
+        call_embedding::<EmbeddingsRequest, EmbeddingsResponse>(&url, &self.api_key, request).await
     }
 
     fn capabilities(&self) -> crate::provider::types::ProviderCapabilities {
@@ -79,8 +72,11 @@ impl crate::provider::Provider for OpenrouterProvider {
         let model_lower = self.model.to_lowercase();
         capabilities |= crate::provider::types::ProviderCapabilities::FUNCTION_CALLING;
 
-        if model_lower.contains("vision") || model_lower.contains("gpt-4")
-            || model_lower.contains("claude-3") || model_lower.contains("gemini") {
+        if model_lower.contains("vision")
+            || model_lower.contains("gpt-4")
+            || model_lower.contains("claude-3")
+            || model_lower.contains("gemini")
+        {
             capabilities |= crate::provider::types::ProviderCapabilities::VISION;
         }
 
@@ -92,6 +88,11 @@ impl crate::provider::Provider for OpenrouterProvider {
     }
 
     fn max_context_length(&self) -> usize {
+        // Use configured max_context_length if provided, otherwise use model-based detection
+        if let Some(length) = self.max_context_length {
+            return length;
+        }
+
         let model_lower = self.model.to_lowercase();
 
         if model_lower.contains("claude-3") {

@@ -49,6 +49,7 @@ impl crate::provider::Provider for OpenaiCompatibleProvider {
     ) -> anyhow::Result<crate::provider::types::ChatResponse> {
         let url = format!("{}/chat/completions", self.endpoint);
         request.model = Some(self.model.clone());
+        request.parallel_tool_calls = Some(true);
         call_chat_completions::<ChatCompletionRequest, ChatCompletionResponse>(
             &url,
             &self.api_key,
