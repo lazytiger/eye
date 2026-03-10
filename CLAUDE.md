@@ -82,27 +82,45 @@ Tools are registered and passed to providers for function calling.
 
 ### Configuration
 
-Uses `~/.eye/config.toml` with clap overrides. Key sections:
+Configuration file location: `~/.eye/config.toml`
 
-- `[openrouter]` - API key, endpoint, default model
-- `[model]` - temperature, max_tokens, stream
-- `[tools]` - enabled tools list
-- `[tools.shell]` - allowed commands whitelist
-- `[[model_routes]]` - array of model route configurations (optional)
-- `active_route` - name of the active model route (optional)
+**Required Fields:**
+- `active_route` - Name of the active model route (must match a route name)
+- `[[model_routes]]` - Array of model route configurations (at least one required)
 
-**Model Routes** (multi-model support):
+**Model Route Configuration:**
 
-The `model_routes` section allows configuring multiple models with different providers:
+Each `[[model_routes]]` entry supports:
+- `name` - Unique identifier for the route (e.g., "fast", "smart")
+- `provider` - Provider name: "openai", "openrouter", "deepseek", or custom "name:endpoint"
+- `model` - Model identifier (e.g., "gpt-4o", "claude-3-opus")
+- `api_key` - API key (optional, can use env var `PROVIDER_API_KEY`)
+- `endpoint` - Optional custom endpoint for compatible providers
+- `temperature` - Optional temperature override (0-2)
+- `max_tokens` - Optional max tokens override
+- `stream` - Optional streaming toggle
 
+**Optional Sections:**
+- `[model]` - Default model parameters (temperature, max_tokens, stream)
+- `[tools]` - Tool configuration
+- `[tools.shell]` - Shell tool settings
+- `[interface]` - UI configuration
+- `[agent]` - Agent settings (system prompt)
+
+**Example Configuration:**
 ```toml
-# Single model route example
+active_route = "fast"
+
+[model]
+temperature = 0.7
+stream = true
+
 [[model_routes]]
 name = "fast"
 provider = "openrouter"
 model = "openai/gpt-4o-mini"
+api_key = ""  # Uses OPENROUTER_API_KEY env var
 
-# Multiple providers
 [[model_routes]]
 name = "smart"
 provider = "openrouter"
@@ -112,22 +130,30 @@ model = "anthropic/claude-3-opus"
 name = "deepseek"
 provider = "deepseek"
 model = "deepseek-chat"
+# Uses DEEPSEEK_API_KEY env var
 
-# Custom endpoint (ByteDance Ark)
 [[model_routes]]
 name = "bytedance"
 provider = "bytedance:https://ark.cn-beijing.volces.com/api/coding/v3"
 model = "ark-code-latest"
-
-# Select active route
-active_route = "fast"
+# Uses BYTEDANCE_API_KEY env var
 ```
 
-**API Key Priority:**
-1. Environment variable: `PROVIDER_API_KEY` (e.g., `OPENROUTER_API_KEY`, `DEEPSEEK_API_KEY`)
-2. Config file `api_key` field
+**Backwards Compatibility:**
 
-**Backwards Compatibility:** If `model_routes` is not configured, falls back to `[openrouter]` default settings.
+Legacy configs with `[openrouter]` section are automatically migrated:
+```toml
+# Legacy format (still supported)
+[openrouter]
+api_key = "sk-..."
+default_model = "openai/gpt-4o-mini"
+```
+
+This is automatically converted to a single `model_routes` entry with name "default".
+
+**API Key Priority:**
+1. Environment variable: `PROVIDER_API_KEY` (uppercase provider name, e.g., `OPENROUTER_API_KEY`)
+2. Config file `api_key` field in route
 
 **CLI Commands:**
 - `cargo run -- list-routes` - List all configured model routes
