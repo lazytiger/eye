@@ -717,6 +717,7 @@ dependencies = [
  "futures",
  "home",
  "html2text",
+ "rand 0.8.5",
  "regex",
  "reqwest",
  "serde",

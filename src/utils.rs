@@ -27,6 +27,15 @@ pub fn reqwest_client() -> &'static Client {
     })
 }
 
+/// Get the user agent string from settings or return default
+pub fn user_agent() -> &'static str {
+    if let Ok(settings) = crate::config::settings::get_settings() {
+        &settings.http.user_agent
+    } else {
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.2365.66"
+    }
+}
+
 /// Set the reqwest client.
 ///
 /// This should be called before [reqwest_client].

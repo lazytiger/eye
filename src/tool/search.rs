@@ -7,10 +7,17 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use anyhow::Result;
 use regex::Regex;
+use rand::Rng;
 
 use crate::provider::MessageContent;
 use crate::tool::{ExecuteResult, Tool};
 use crate::utils;
+
+/// Search providers
+enum SearchProvider {
+    DuckDuckGo,
+    Bing,
+}
 
 /// Search tool that retrieves real-time information from the web
 pub struct SearchTool;
@@ -19,6 +26,16 @@ impl SearchTool {
     /// Creates a new instance of SearchTool
     pub fn new() -> Self {
         Self
+    }
+
+    /// Randomly select a search provider
+    fn select_provider() -> SearchProvider {
+        let mut rng = rand::thread_rng();
+        if rng.gen_bool(0.5) {
+            SearchProvider::DuckDuckGo
+        } else {
+            SearchProvider::Bing
+        }
     }
 }
 
@@ -68,28 +85,19 @@ impl Tool for SearchTool {
 
         let num_results = args["num_results"].as_i64().unwrap_or(5).clamp(1, 10) as usize;
 
-        // Use DuckDuckGo HTML search (no API key required)
-        let client = utils::reqwest_client();
+        // Randomly select search provider (DuckDuckGo or Bing)
+        let provider = SearchTool::select_provider();
 
-        let encoded_query = urlencoding::encode(query);
-        let search_url = format!("https://html.duckduckgo.com/html/?q={}", encoded_query);
-
-        let response = client
-            .get(&search_url)
-            .send()
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to perform search: {}", e))?;
-
-        if !response.status().is_success() {
-            return Ok(ExecuteResult::Failure(
-                format!("Search failed with status: {}", response.status())
-            ));
-        }
-
-        let html_content = response.text().await?;
-
-        // Parse HTML to extract results
-        let results = parse_duckduckgo_results(&html_content, num_results);
+        let results = match provider {
+            SearchProvider::DuckDuckGo => {
+                tracing::debug!("Using DuckDuckGo for search");
+                search_duckduckgo(query, num_results).await?
+            }
+            SearchProvider::Bing => {
+                tracing::debug!("Using Bing for search");
+                search_bing(query, num_results).await?
+            }
+        };
 
         if results.is_empty() {
             return Ok(ExecuteResult::Success(MessageContent::Text(
@@ -103,6 +111,116 @@ impl Tool for SearchTool {
 
         Ok(ExecuteResult::Success(MessageContent::Text(results_json)))
     }
+}
+
+/// Search using DuckDuckGo HTML search
+async fn search_duckduckgo(query: &str, num_results: usize) -> Result<Vec<Value>> {
+    let client = utils::reqwest_client();
+    let encoded_query = urlencoding::encode(query);
+    let search_url = format!("https://html.duckduckgo.com/html/?q={}", encoded_query);
+
+    let response = client
+        .get(&search_url)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to perform search: {}", e))?;
+
+    if !response.status().is_success() {
+        return Ok(Vec::new());
+    }
+
+    let html_content = response.text().await?;
+    Ok(parse_duckduckgo_results(&html_content, num_results))
+}
+
+/// Search using Bing HTML search
+async fn search_bing(query: &str, num_results: usize) -> Result<Vec<Value>> {
+    let client = utils::reqwest_client();
+    let encoded_query = urlencoding::encode(query);
+    let search_url = format!("https://www.bing.com/search?q={}", encoded_query);
+
+    let response = client
+        .get(&search_url)
+        .header("User-Agent", utils::user_agent())
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to perform search: {}", e))?;
+
+    if !response.status().is_success() {
+        return Ok(Vec::new());
+    }
+
+    let html_content = response.text().await?;
+    Ok(parse_bing_results(&html_content, num_results))
+}
+
+/// Parse Bing HTML search results using regex
+fn parse_bing_results(html: &str, max_results: usize) -> Vec<Value> {
+    let mut results = Vec::new();
+
+    // Bing HTML result structure:
+    // <li class="b_algo">
+    //   <h2><a href="...">Title</a></h2>
+    //   <div class="b_caption"><p>Snippet</p></div>
+    // </li>
+
+    let algo_pattern = Regex::new(
+        r#"<li[^>]*class="[^"]*b_algo[^"]*"[^>]*>"#
+    ).unwrap();
+
+    let link_pattern = Regex::new(
+        r#"<h2[^>]*><a[^>]*href="([^"]+)"[^>]*>([^<]+)</a></h2>"#
+    ).unwrap();
+
+    let snippet_pattern = Regex::new(
+        r#"<div[^>]*class="[^"]*b_caption[^"]*"[^>]*><p>([^<]*)</p></div>"#
+    ).unwrap();
+
+    for algo_match in algo_pattern.captures_iter(html) {
+        if results.len() >= max_results {
+            break;
+        }
+
+        let start = algo_match.get(0).unwrap().start();
+        let remaining = &html[start..];
+
+        // Take a reasonable chunk to search within this result
+        let end = remaining.find("<li").map(|i| start + i).unwrap_or(html.len());
+        let result_html = &html[start..end.min(start + 2000)];
+
+        // Extract title and link
+        if let Some(link_cap) = link_pattern.captures(result_html) {
+            let url = link_cap.get(1).map_or("", |m| m.as_str()).to_string();
+            let title = link_cap.get(2).map_or("", |m| m.as_str())
+                .replace("&amp;", "&")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", "\"")
+                .replace("&#39;", "'")
+                .trim()
+                .to_string();
+
+            // Extract snippet
+            let snippet = snippet_pattern.captures(result_html)
+                .and_then(|cap| cap.get(1))
+                .map_or(String::new(), |m| {
+                    m.as_str()
+                        .replace("&amp;", "&")
+                        .replace("&lt;", "<")
+                        .replace("&gt;", ">")
+                        .replace("&quot;", "\"")
+                        .replace("&#39;", "'")
+                });
+
+            results.push(json!({
+                "title": title,
+                "link": url,
+                "snippet": snippet.trim().to_string()
+            }));
+        }
+    }
+
+    results
 }
 
 /// Parse DuckDuckGo HTML search results using regex
