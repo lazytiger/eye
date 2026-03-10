@@ -24,12 +24,23 @@ static REQWEST_CLIENT: OnceLock<Client> = OnceLock::new();
 ///
 /// If not set, a default client will be returned.
 ///
-/// The default client will have a connect timeout of 10 seconds and a timeout of 120 seconds.
+/// The default client has:
+/// - Connect timeout: 10 seconds
+/// - Request timeout: 300 seconds (5 minutes) - increased for LLM API calls
+/// - Pool max idle: 10
+/// - Pool idle timeout: 90 seconds
+/// - HTTP2 keep-alive ping
 pub fn reqwest_client() -> &'static Client {
     REQWEST_CLIENT.get_or_init(|| {
         Client::builder()
             .connect_timeout(Duration::from_secs(10))
-            .timeout(Duration::from_secs(120))
+            .timeout(Duration::from_secs(300)) // 5 minutes for LLM responses
+            .pool_max_idle_per_host(10)
+            .pool_idle_timeout(Duration::from_secs(90))
+            .http2_keep_alive_interval(Duration::from_secs(30))
+            .http2_keep_alive_timeout(Duration::from_secs(20))
+            .http2_keep_alive_while_idle(true)
+            .user_agent(user_agent())
             .build()
             .expect("Client builder failed")
     })

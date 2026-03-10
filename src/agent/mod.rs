@@ -81,16 +81,27 @@ impl Agent {
 
     /// Process a single user message through the full agent loop
     async fn process_user_message(&self, user_input: &str) -> Result<()> {
+        tracing::info!("Processing user message: {}", user_input);
+
         // 1. Add user message to history
         self.history.add_user_message(user_input).await;
 
         // 2. Build request with current history
         let mut request = self.build_request().await?;
 
+        tracing::debug!("Initial request built with {} messages", request.messages.len());
+
         // 3. Main conversation loop (handles tool calls)
+        let mut loop_count = 0;
         loop {
+            loop_count += 1;
+            tracing::info!("Conversation loop iteration {}", loop_count);
+
             // 4. Send request to LLM
+            tracing::debug!("Sending request to LLM...");
+            let chat_start = std::time::Instant::now();
             let response = self.provider.chat(request).await?;
+            tracing::info!("LLM response received in {:?}", chat_start.elapsed());
 
             // 5. Get assistant message
             let assistant_message = &response.choices.first().unwrap().message;
@@ -100,15 +111,21 @@ impl Agent {
 
             match &assistant_message.tool_calls {
                 Some(tool_calls) if !tool_calls.is_empty() => {
+                    tracing::info!("Received {} tool call(s)", tool_calls.len());
+
                     // Execute all tool calls
+                    let exec_start = std::time::Instant::now();
                     self.execute_tool_calls(tool_calls).await?;
+                    tracing::info!("Tool execution completed in {:?}", exec_start.elapsed());
 
                     // Build new request with updated history (including tool results)
                     request = self.build_request().await?;
+                    tracing::debug!("New request built with {} messages", request.messages.len());
+
                     // Continue loop to send back to LLM
                 }
                 _ => {
-                    // No tool calls, send final response to user
+                    tracing::info!("No tool calls, sending final response to user");
 
                     if let Some(content) = &assistant_message.content {
                         // Convert MessageContent to string for display
@@ -123,6 +140,7 @@ impl Agent {
             }
         }
 
+        tracing::info!("Message processing completed");
         Ok(())
     }
 
