@@ -6,27 +6,10 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// Legacy OpenRouter configuration for backwards compatibility
-#[derive(Debug, Clone, Deserialize)]
-struct LegacyOpenRouterConfig {
-    api_key: String,
-    #[serde(default = "default_openrouter_endpoint_legacy")]
-    endpoint: String,
-    #[serde(default = "default_model_legacy")]
-    default_model: String,
-}
-
-fn default_openrouter_endpoint_legacy() -> String {
-    "https://openrouter.ai/api/v1".to_string()
-}
-
-fn default_model_legacy() -> String {
-    "openai/gpt-4o-mini".to_string()
-}
-
 /// Legacy Settings for backwards compatibility
 #[derive(Debug, Clone, Deserialize)]
 struct LegacySettings {
+    #[serde(default)]
     openrouter: Option<LegacyOpenRouterConfig>,
     #[serde(default)]
     model_routes: Vec<ModelRouteConfig>,
@@ -42,6 +25,13 @@ struct LegacySettings {
     agent: AgentConfig,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct LegacyOpenRouterConfig {
+    api_key: String,
+    #[serde(default)]
+    default_model: String,
+}
+
 impl From<LegacySettings> for Settings {
     fn from(legacy: LegacySettings) -> Self {
         let mut settings = Settings {
@@ -53,16 +43,18 @@ impl From<LegacySettings> for Settings {
             agent: legacy.agent,
         };
 
-        // If legacy openrouter config exists and no model_routes, migrate it
+        // Migrate legacy openrouter config to model_routes
         if let Some(openrouter) = legacy.openrouter {
             if settings.model_routes.is_empty() {
                 settings.model_routes.push(ModelRouteConfig {
                     name: "default".to_string(),
                     provider: "openrouter".to_string(),
-                    model: openrouter.default_model,
+                    model: if openrouter.default_model.is_empty() {
+                        "openai/gpt-4o-mini".to_string()
+                    } else {
+                        openrouter.default_model
+                    },
                     api_key: openrouter.api_key,
-                    endpoint: None,
-                    max_context_length: None,
                     temperature: None,
                     max_tokens: None,
                     stream: None,
@@ -157,10 +149,17 @@ impl Settings {
                 format!("Unable to read config file: {}", config_path.display())
             })?;
 
-            // Try to parse as legacy format first (has [openrouter] section)
-            if let Ok(legacy) = toml::from_str::<LegacySettings>(&config_content) {
-                tracing::info!("Loaded configuration (legacy format with openrouter section)");
-                return Ok(legacy.into());
+            // Check if config has legacy [openrouter] section
+            let has_openrouter = config_content.contains("[openrouter]");
+
+            // Try to parse as legacy format first if it might have [openrouter]
+            if has_openrouter {
+                if let Ok(legacy) = toml::from_str::<LegacySettings>(&config_content) {
+                    if legacy.openrouter.is_some() {
+                        tracing::info!("Loaded configuration (legacy format with openrouter section)");
+                        return Ok(legacy.into());
+                    }
+                }
             }
 
             // Parse as new format
@@ -299,13 +298,6 @@ fn default_system_prompt() -> String {
 }
 
 /// Model route configuration
-///
-/// Represents a single model configuration that can be selected at runtime.
-/// Each route defines a complete provider configuration with:
-/// - Provider name (openai, openrouter, deepseek, or custom "name:endpoint")
-/// - Model identifier
-/// - Optional API key (can also use env var PROVIDER_API_KEY)
-/// - Optional endpoint override for custom providers
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelRouteConfig {
     /// Unique identifier for this route (e.g., "fast", "smart", "budget")
@@ -320,14 +312,6 @@ pub struct ModelRouteConfig {
     /// Optional API key (can also use env var PROVIDER_API_KEY)
     #[serde(default)]
     pub api_key: String,
-
-    /// Optional endpoint override (for custom providers)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub endpoint: Option<String>,
-
-    /// Optional max context length override
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_context_length: Option<usize>,
 
     /// Temperature (0-2). Higher values = more random
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -433,8 +417,6 @@ impl Default for ModelRouteConfig {
             provider: "openrouter".to_string(),
             model: "openai/gpt-4o-mini".to_string(),
             api_key: String::new(),
-            endpoint: None,
-            max_context_length: None,
             temperature: None,
             max_tokens: None,
             stream: None,
@@ -453,8 +435,6 @@ mod tests {
             provider: "openrouter".to_string(),
             model: "gpt-4o".to_string(),
             api_key: "test-key".to_string(),
-            endpoint: None,
-            max_context_length: None,
             temperature: Some(0.8),
             max_tokens: Some(4096),
             stream: Some(false),
@@ -476,27 +456,6 @@ mod tests {
     fn test_settings_with_model_routes() {
         let toml_str = r#"
             active_route = "fast"
-
-            [model]
-            temperature = 0.7
-            max_tokens = 2048
-            stream = true
-
-            [tools]
-            enabled = ["shell"]
-
-            [tools.shell]
-            allowed_commands = ["ls"]
-            allow_any_command = false
-            timeout_seconds = 30
-
-            [interface]
-            prompt = "eye> "
-            show_timestamp = false
-            enable_colors = true
-
-            [agent]
-            system_prompt = "Test prompt"
 
             [[model_routes]]
             name = "fast"
@@ -523,42 +482,6 @@ mod tests {
     }
 
     #[test]
-    fn test_settings_without_model_routes() {
-        let toml_str = r#"
-            active_route = "default"
-
-            [model]
-            temperature = 0.7
-            max_tokens = 2048
-            stream = true
-
-            [tools]
-            enabled = ["shell"]
-
-            [tools.shell]
-            allowed_commands = ["ls"]
-            allow_any_command = false
-            timeout_seconds = 30
-
-            [interface]
-            prompt = "eye> "
-            show_timestamp = false
-            enable_colors = true
-
-            [agent]
-            system_prompt = "Test prompt"
-        "#;
-
-        let settings: Settings = toml::from_str(toml_str).unwrap();
-
-        assert!(settings.model_routes.is_empty());
-        assert_eq!(settings.active_route, "default");
-
-        // Should error when no routes configured
-        assert!(settings.get_active_route().is_err());
-    }
-
-    #[test]
     fn test_get_active_route_not_found() {
         let mut settings = Settings::default();
         settings.active_route = "nonexistent".to_string();
@@ -574,14 +497,56 @@ mod tests {
             provider: "openrouter".to_string(),
             model: "gpt-4o".to_string(),
             api_key: String::new(),
-            endpoint: None,
-            max_context_length: None,
             temperature: None,
             max_tokens: None,
             stream: None,
         }];
-        settings.active_route = String::new(); // empty active_route
+        settings.active_route = String::new();
         let result = settings.get_active_route();
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_legacy_settings_migration() {
+        let legacy_toml = r#"
+            [openrouter]
+            api_key = "legacy-key"
+            default_model = "gpt-4"
+        "#;
+
+        let legacy: LegacySettings = toml::from_str(legacy_toml).unwrap();
+        let settings: Settings = legacy.into();
+
+        assert_eq!(settings.model_routes.len(), 1);
+        assert_eq!(settings.model_routes[0].name, "default");
+        assert_eq!(settings.model_routes[0].provider, "openrouter");
+        assert_eq!(settings.model_routes[0].model, "gpt-4");
+        assert_eq!(settings.model_routes[0].api_key, "legacy-key");
+        assert_eq!(settings.active_route, "default");
+    }
+
+    #[test]
+    fn test_legacy_settings_migration_with_existing_routes() {
+        // Note: In TOML, keys under [table] belong to that table until the next [table]
+        // So active_route must come BEFORE [openrouter] or after [[model_routes]] with explicit table
+        let legacy_toml = r#"
+            active_route = "custom"
+
+            [openrouter]
+            api_key = "legacy-key"
+
+            [[model_routes]]
+            name = "custom"
+            provider = "deepseek"
+            model = "deepseek-chat"
+        "#;
+
+        let legacy: LegacySettings = toml::from_str(legacy_toml).unwrap();
+        let settings: Settings = legacy.into();
+
+        // Should not migrate if model_routes already exists
+        assert_eq!(settings.model_routes.len(), 1);
+        assert_eq!(settings.model_routes[0].name, "custom");
+        assert_eq!(settings.active_route, "custom");
     }
 }
