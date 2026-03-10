@@ -65,6 +65,8 @@ pub struct HistoryManagerInner {
     user: ChatMessage,
     /// Recent tool call signatures for loop detection
     recent_tool_calls: VecDeque<ToolCallSignature>,
+    /// Default number of history messages to return (pairs of user+assistant)
+    default_history_pairs: usize,
 }
 
 #[derive(Clone)]
@@ -72,8 +74,13 @@ pub struct HistoryManager(Arc<RwLock<HistoryManagerInner>>);
 
 impl HistoryManager {
     const MIN_HISTORY_SIZE: usize = 20;
+    const DEFAULT_HISTORY_PAIRS: usize = 2; // Default: return last 2 conversation pairs (4 messages)
 
     pub fn new(provider: Arc<dyn Provider>) -> Self {
+        Self::new_with_limit(provider, Self::DEFAULT_HISTORY_PAIRS)
+    }
+
+    pub fn new_with_limit(provider: Arc<dyn Provider>, default_pairs: usize) -> Self {
         Self(Arc::new(RwLock::new(HistoryManagerInner {
             messages: Vec::new(),
             summary_provider: provider,
@@ -86,6 +93,7 @@ impl HistoryManager {
                 content: MessageContent::Text("Compress the full conversation history in this context according to the system instructions.".to_string()),
             }),
             recent_tool_calls: VecDeque::with_capacity(MAX_TOOL_CALL_HISTORY),
+            default_history_pairs: default_pairs,
         })))
     }
 
@@ -253,7 +261,41 @@ impl HistoryManager {
 
     pub async fn messages(&self) -> Vec<ChatMessage> {
         let inner = self.0.read().await;
+        self.get_messages_with_limit(&inner, inner.default_history_pairs)
+    }
+
+    /// Get all messages without limit
+    pub async fn messages_all(&self) -> Vec<ChatMessage> {
+        let inner = self.0.read().await;
         inner.messages.clone()
+    }
+
+    /// Get messages with a limit of conversation pairs (user + assistant = 1 pair)
+    pub async fn messages_with_limit(&self, pairs: usize) -> Vec<ChatMessage> {
+        let inner = self.0.read().await;
+        self.get_messages_with_limit(&inner, pairs)
+    }
+
+    /// Get the default number of history messages
+    pub async fn messages_default(&self) -> Vec<ChatMessage> {
+        let inner = self.0.read().await;
+        self.get_messages_with_limit(&inner, inner.default_history_pairs)
+    }
+
+    /// Helper function to get messages with limit
+    fn get_messages_with_limit(&self, inner: &HistoryManagerInner, pairs: usize) -> Vec<ChatMessage> {
+        if pairs == 0 || pairs >= usize::MAX / 2 {
+            return inner.messages.clone();
+        }
+
+        let limit = pairs * 2;
+        let len = inner.messages.len();
+
+        if len <= limit {
+            inner.messages.clone()
+        } else {
+            inner.messages[len - limit..].to_vec()
+        }
     }
 
     pub async fn compact(&self, force: bool) -> anyhow::Result<()> {
@@ -437,6 +479,63 @@ mod tests {
         // Verify history is limited
         let inner = history.0.read().await;
         assert!(inner.recent_tool_calls.len() <= MAX_TOOL_CALL_HISTORY);
+    }
+
+    #[tokio::test]
+    async fn test_messages_with_limit() {
+        use crate::provider::ChatMessage;
+
+        let provider = create_provider("deepseek", "deepseek-chat", "").unwrap();
+        let history = HistoryManager::new(provider.into());
+
+        // Add 10 messages (5 conversation pairs)
+        for i in 0..5 {
+            history.add_user_message(format!("Question {}", i)).await;
+            history.add_message(ChatMessage::Assistant(AssistantMessage {
+                content: Some(MessageContent::Text(format!("Answer {}", i))),
+                name: None,
+                tool_calls: None,
+                refusal: None,
+            })).await;
+        }
+
+        // Test messages_all - should return all 10 messages
+        let all = history.messages_all().await;
+        assert_eq!(all.len(), 10);
+
+        // Test messages_with_limit(2) - should return last 2 pairs (4 messages)
+        let limited = history.messages_with_limit(2).await;
+        assert_eq!(limited.len(), 4);
+
+        // Check first message is Question 3 (user message)
+        if let ChatMessage::User(user_msg) = &limited[0] {
+            if let MessageContent::Text(text) = &user_msg.content {
+                assert_eq!(text, "Question 3");
+            } else {
+                panic!("Expected Text content");
+            }
+        } else {
+            panic!("Expected User message");
+        }
+
+        // Check last message is Answer 4 (assistant message)
+        if let ChatMessage::Assistant(assist_msg) = &limited[3] {
+            if let Some(MessageContent::Text(text)) = &assist_msg.content {
+                assert_eq!(text, "Answer 4");
+            } else {
+                panic!("Expected Text content");
+            }
+        } else {
+            panic!("Expected Assistant message");
+        }
+
+        // Test messages_with_limit(0) - should return all
+        let all_zero = history.messages_with_limit(0).await;
+        assert_eq!(all_zero.len(), 10);
+
+        // Test messages_default - should use default pairs (2)
+        let default = history.messages_default().await;
+        assert_eq!(default.len(), 4);
     }
 
     #[tokio::test]

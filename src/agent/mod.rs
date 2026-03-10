@@ -27,6 +27,7 @@ pub struct Agent {
     tool_manager: Arc<ToolManager>,
     skill_manager: Arc<SkillManager>,
     interface: Arc<dyn Interface>,
+    system_prompt: String,
 }
 
 impl Agent {
@@ -38,6 +39,7 @@ impl Agent {
         tool_manager: Arc<ToolManager>,
         skill_manager: Arc<SkillManager>,
         interface: Arc<dyn Interface>,
+        system_prompt: String,
     ) -> Self {
         Self {
             provider,
@@ -45,6 +47,7 @@ impl Agent {
             tool_manager,
             skill_manager,
             interface,
+            system_prompt,
         }
     }
 
@@ -165,6 +168,12 @@ impl Agent {
         conversation: &ConversationManager,
     ) -> Result<ChatRequest> {
         let mut messages = self.history.messages().await;
+
+        // Add system prompt at the beginning
+        messages.insert(0, ChatMessage::System(crate::provider::SystemMessage {
+            name: None,
+            content: MessageContent::Text(self.system_prompt.clone()),
+        }));
 
         // Add current user input from conversation
         let user_input = conversation.user_input().await;

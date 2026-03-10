@@ -175,6 +175,7 @@ pub async fn run() -> anyhow::Result<()> {
         tool_manager,
         skill_manager,
         std::sync::Arc::from(interface),
+        config.agent.system_prompt.clone(),
     );
 
     agent.run().await?;
