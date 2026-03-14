@@ -78,7 +78,7 @@ jobs:
         strip target/${{ matrix.target }}/release/eye_bin
     
     - name: Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ matrix.artifact_name }}
         path: target/${{ matrix.target }}/release/eye_bin${{ matrix.os == 'windows-latest' && '.exe' || '' }}
