@@ -35,7 +35,7 @@ html2text = "0.16"
 urlencoding = "2.1"
 scraper = "0.23"
 regex = "1.12"
-rand = "0.8"
+rand = "0.9"
 
 # Async trait support
 async-trait = "0.1"
